@@ -6,6 +6,9 @@
 
 ## 0. 修订记录
 
+- **v30(2026-09-12)** 新增 §3.10:PWA manifest + 图标(圆角方底 + 白色 Z、maskable 安全区、touch icon 不透明、
+  `start_url/scope` 必须相对路径、`theme_color` 取页面底色);明确本批**不含** service worker。
+
 - **v29(2026-09-12)** 修:配色卡片的脚部键(错题/收藏)展开后"白字压白底"看不见 —— 半透明白底的覆盖漏了`:not(.open)`。见 §3.4。
 
 - **v28(2026-09-12)** 「导出题库」逐库写分节标题、**导入时自动认出多题库**(默认分开导入);回收站点外面收起。新增 §3.9。
@@ -639,6 +642,35 @@ details.answer-reveal 「查看答案」→ 你的答案 / 正确答案 / 解析
 - 预览里**每道题都带库名徽章**(📚 名称)—— 用户能核对切分对不对,而不是盲信。
 - 分开导入的纪律:**同名库追加**;勾了「覆盖」才清空重建,且**逐库存版**(可回退);
   **逐库记一条导入批次** —— 撤销才撤得掉,而且只撤那一个库,不牵连别的库。
+
+## 3.10 PWA:manifest 与图标(👤 2026-09-12 提到 P0)
+
+**目的**:Zquiz 能"装到主屏"、带自己的图标、点开**全屏无地址栏**。
+⚠️ **本批不含离线缓存(service worker)** —— 👤 已取消,另行设计;`sw.js` 出现即视为越界(有守卫)。
+
+```
+icons/icon.svg / maskable.svg   ← 图源(入库,以后改图标只动这两个 + 重渲)
+icons/icon-192.png  icon-512.png  maskable-512.png  apple-touch-icon-180.png  favicon-32.png
+manifest.webmanifest            ← name / short_name / display:standalone / theme_color / icons
+index.html head                 ← manifest + icon + apple-touch-icon + iOS meta + theme-color 亮暗两档
+```
+
+**图标规范**
+- 形状:**圆角方底**(radius = 边长 22%)+ 居中白色 **Z**(两横 + 一斜三块拼,横条厚 56/512,圆角 10)。
+- 配色:底色 = 主色渐变 `#3b82f6 → #1d4ed8`(与站内 `--c-primary` 一系);字色纯白。**不写字、不加阴影** —— 48px 下要还认得出。
+- 安全区:Z 的最远角距中心 ≈ 149px(< 512 的 40% = 205),所以**同一套图**直接满足 maskable 的中央 80% 安全圈。
+- **两套底**:常规图标**圆角外透明**;`maskable` 与 `apple-touch-icon` **必须不透明且铺满**
+  (iOS 会把透明底填成黑/白块;安卓 maskable 要自己铺满由系统裁)。有守卫:解码 PNG 逐像素验这三点。
+- 零依赖 → PNG 用**无头浏览器把 SVG 渲成图**(`scripts/probe.sh` 同一套路),不引任何图形库。
+
+**manifest 规则**
+- `start_url` 与 `scope` **必须是相对路径**(`./`):站点在 `/zquiz/` 子目录下,写 `/` 或绝对 URL 会 scope 错位 →
+  **装到主屏后点开白屏**(最难一眼看出的坑)。
+- 图标至少 **192 + 512**(浏览器安装门槛)+ 一张 `purpose: maskable`。
+- `theme_color` **取页面底色**(亮 `#f5f7fa` / 暗 `#121417`),不取品牌蓝 —— 浏览器地址栏与状态栏因此与页面无缝,
+  在浏览器里的观感与改动前完全一致;蓝色只留给图标本身。
+- iOS 不读 manifest 的部分能力:靠 `apple-mobile-web-app-capable` / `-title` / `-status-bar-style` 与
+  `apple-touch-icon`;iOS 也**没有 `beforeinstallprompt`**,所以"引导"只能是一句文案,不做弹窗。
 
 ## 4. 字号阶梯(唯一可选值)
 

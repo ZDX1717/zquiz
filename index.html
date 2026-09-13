@@ -1,11 +1,26 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-        <meta name="theme-color" content="#f5f7fa">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zquiz · 期末周刷题</title>
-    <link rel="stylesheet" href="styles.css?v=1058">
+    <meta name="description" content="纯前端刷题工具：导入题库、刷题、错题本、收藏与复习。数据全部存在本机。">
+    <!-- PWA(👤 2026-09-12 提到 P0):装到主屏 + 全屏无地址栏。
+         theme-color 分亮暗两档,并**取页面底色**(而不是品牌蓝)—— 这样浏览器地址栏/状态栏与页面无缝,
+         与改动前在浏览器里的观感完全一致;蓝色留给图标本身。
+         ⚠️ start_url/scope 在 manifest 里写的是 "./":站点在 /zquiz/ 子目录下,写成绝对路径会白屏。 -->
+    <meta name="theme-color" content="#f5f7fa" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#121417" media="(prefers-color-scheme: dark)">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+    <!-- iOS 不读 manifest 的部分能力,得靠这几个 meta;touch icon **必须不透明**(透明底会被填成黑/白块) -->
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Zquiz">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="stylesheet" href="styles.css?v=1059">
 </head>
 <body>
     <div class="container">
@@ -632,6 +647,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1058"></script>
+    <script type="module" src="src/main.js?v=1059"></script>
 </body>
 </html>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Zquiz">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <!-- 圆角方底:与站内主色一致(亮色 --c-primary #2563eb 一系) -->
+  <rect x="0" y="0" width="512" height="512" rx="0" fill="url(#g)"/>
+  <!-- Z 字:两横 + 一斜(三块拼,避免复杂轮廓),居中、留白 ~30% -->
+  <rect x="156" y="146" width="200" height="56" rx="10" fill="#fff"/>
+  <rect x="156" y="310" width="200" height="56" rx="10" fill="#fff"/>
+  <polygon points="300,202 356,202 212,310 156,310" fill="#fff"/>
+</svg>
