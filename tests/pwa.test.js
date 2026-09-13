@@ -117,13 +117,19 @@ test('图标像素:蓝底 + 白色书本 + 书页上的蓝色 Z + 右上角绿�
     // ⑥ maskable:前景(书本 + 徽章,**不含底色**)必须全部留在中央 80% 安全圈(半径 205)内,
     //    否则安卓把它裁成圆形/水滴形时会把书角或徽章切掉
     const mk = decodePng(path.join(root, 'icons/maskable-512.png'));
-    let outside = 0;
+    let outside = 0, mkWhite = 0, mkGreen = 0;
     for (let y = 0; y < mk.h; y++) for (let x = 0; x < mk.w; x++) {
-        const dx = x - 256, dy = y - 256;
-        if (dx * dx + dy * dy <= 204.8 * 204.8) continue;
         const p = mk.at(x, y);
-        if (isWhite(p) || isGreen(p)) outside++;
+        const w = isWhite(p), g = isGreen(p);
+        if (w) mkWhite++;
+        if (g) mkGreen++;
+        if (!(w || g)) continue;
+        const dx = x - 256, dy = y - 256;
+        if (dx * dx + dy * dy > 204.8 * 204.8) outside++;
     }
+    // ⚠️ 先断言"前景真的存在",否则"圈外 0 个"会因为整张图空白而假通过(踩过这种空转断言)
+    assert.ok(mkWhite > 15000 && mkGreen > 3000,
+        `maskable 里书页与徽章都必须在(白 ${mkWhite} / 绿 ${mkGreen})`);
     assert.strictEqual(outside, 0, `maskable 有 ${outside} 个前景像素落在安全圈外(会被系统裁掉)`);
 });
 
