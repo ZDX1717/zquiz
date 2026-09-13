@@ -1,18 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Zquiz"><defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Zquiz">
+  <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/>
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
     </linearGradient>
-  </defs><rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <!-- 书本元素:立着的书。白色书体 + 左侧浅蓝书脊 + 一条更浅的书沟(不画线也认得出是书) -->
-  <rect x="120" y="112" width="272" height="288" rx="18" fill="#fff"/>
-  <rect x="120" y="112" width="40" height="288" rx="18" fill="#dbeafe"/>
-  <rect x="160" y="112" width="6" height="288" fill="#bfdbfe"/>
+  </defs>
+  <!-- 底:圆角方(radius = 22%),主色渐变 -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- 书本元素:立着的书,占画布 62.5%(320/512,四边留 96)。
+       ⚠️ 五张 PNG 的**主体尺寸必须一致**(apple-touch / maskable 也一样):
+       以前 maskable 为了躲"80% 安全圈"整体缩到 84%,于是同一套图标里大小不一(👤 反馈) -->
+  <rect x="96" y="96" width="320" height="320" rx="20" fill="#fff"/>
+  <rect x="96" y="96" width="44" height="320" rx="20" fill="#dbeafe"/>
+  <rect x="140" y="96" width="6" height="320" fill="#bfdbfe"/>
   <!-- Z 元素:写在书封面上(蓝字压白封面,对比足) -->
   <g fill="#1d4ed8">
-    <rect x="183" y="152" width="140" height="42" rx="8"/>
-    <rect x="183" y="286" width="140" height="42" rx="8"/>
-    <polygon points="295,194 323,194 211,286 183,286"/>
+    <rect x="191" y="156" width="180" height="52" rx="9"/>
+    <rect x="191" y="304" width="180" height="52" rx="9"/>
+    <polygon points="325,208 371,208 237,304 191,304"/>
   </g>
   <!-- 刷题元素:右下角绿色对勾徽章(= 答对)。蓝环镂空,把徽章从书上"抠"出来 -->
-  <circle cx="386" cy="366" r="62" fill="#12a150" stroke="#2b6ade" stroke-width="12"/>
-  <polyline points="358,366 376,384 412,344" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <circle cx="398" cy="376" r="56" fill="#12a150" stroke="#2b6ade" stroke-width="12"/>
+  <polyline points="370,376 386,392 420,354" fill="none" stroke="#fff" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
