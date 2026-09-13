@@ -74,22 +74,52 @@ test('manifest 里的每个图标都存在,且 PNG 实际尺寸与声明一致',
     }
 });
 
-test('图标像素:圆角外真透明、Z 是白的、底色是品牌蓝;maskable 与 touch icon 必须不透明', () => {
-    const rounded = decodePng(path.join(root, 'icons/icon-512.png'));
-    const corner = rounded.at(2, 2);
-    assert.strictEqual(corner[3], 0, '圆角外应完全透明(否则安卓/iOS 会看到白角)');
-    const bg = rounded.at(120, 256);
-    assert.ok(bg[2] > bg[0] + 40, `底色应是蓝的,实际 rgb(${bg.slice(0, 3)})`);
-    for (const [x, y, where] of [[256, 174, '上横'], [256, 256, '斜杠'], [256, 338, '下横']]) {
-        const p = rounded.at(x, y);
-        assert.ok(p[0] > 240 && p[1] > 240 && p[2] > 240, `Z 的${where}应接近纯白,实际 rgba(${p})`);
-    }
-    // iOS 会把透明底填成黑/白块,所以 touch icon 必须不透明;maskable 由系统裁切,底必须铺满
+test('图标像素:圆角外透明、Z 是白的、底色是蓝的、右下角有绿色对勾徽章', () => {
+    // ⚠️ 采样坐标跟着 `icons/icon.svg` 的构图走(蓝底 + 白色 Z + 右下对勾徽章);改构图要同步这里
+    const img = decodePng(path.join(root, 'icons/icon-512.png'));
+    const isWhite = (p) => p[0] > 230 && p[1] > 230 && p[2] > 230;
+    const isGreen = (p) => p[1] > p[0] + 25 && p[1] > p[2] + 15;
+    const isBlue = (p) => p[2] > p[0] + 40;
+    const count = (x0, x1, y0, y1, fn) => {
+        let n = 0;
+        for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (fn(img.at(x, y))) n++;
+        return n;
+    };
+    assert.strictEqual(img.at(2, 2)[3], 0, '圆角外应完全透明(否则安卓/iOS 会看到白角)');
+
+    // ① 底:主色蓝(渐变,上下取样都该是蓝)
+    assert.ok(isBlue(img.at(70, 110)) && isBlue(img.at(80, 430)), '底色应是主色蓝');
+
+    // ② Z 元素:中左区域大片纯白(两横 + 一斜)
+    const zWhite = count(130, 340, 130, 350, isWhite);
+    assert.ok(zWhite > 8000, `Z 应是白色且占据中左区域,实测白色像素 ${zWhite}`);
+
+    // ③ 刷题元素:右下角的绿色对勾徽章
+    const badgeGreen = count(280, 460, 260, 440, isGreen);
+    assert.ok(badgeGreen > 3000, `右下角应有绿色徽章,实测绿色像素 ${badgeGreen}`);
+    assert.ok(count(330, 410, 318, 388, isWhite) > 150, '徽章里应有白色对勾');
+
+    // ④ 徽章与 Z 之间必须有"镂空圈"(蓝),否则白 Z 与白勾会糊成一块
+    const rayX = Math.round(368 + 76 * 0.707), rayY = Math.round(352 + 76 * 0.707);
+    assert.ok(isBlue(img.at(rayX, rayY)), `徽章外应有一圈底色(镂空),实测 rgb(${img.at(rayX, rayY)})`);
+
+    // ⑤ iOS 会把透明底填成黑/白块,所以 touch icon 必须不透明;maskable 由系统裁切,底必须铺满
     for (const f of ['icons/apple-touch-icon-180.png', 'icons/maskable-512.png']) {
-        const img = decodePng(path.join(root, f));
-        assert.strictEqual(img.ch, 3, `${f} 不应带 alpha 通道`);
-        assert.ok(img.at(2, 2)[2] > img.at(2, 2)[0] + 40, `${f} 的角上应是实心底色`);
+        const png = decodePng(path.join(root, f));
+        assert.strictEqual(png.ch, 3, `${f} 不应带 alpha 通道`);
+        assert.ok(isBlue(png.at(2, 2)), `${f} 的角上应是实心底色`);
     }
+    // maskable:内容(含右下徽章)必须留在中央 80% 安全圈内 —— 半径 205 / 512 的一半
+    const mk = decodePng(path.join(root, 'icons/maskable-512.png'));
+    const r = (256 * 0.8);
+    let outside = 0;
+    for (let y = 0; y < mk.h; y++) for (let x = 0; x < mk.w; x++) {
+        const dx = x - 256, dy = y - 256;
+        if (dx * dx + dy * dy <= r * r) continue;
+        const p = mk.at(x, y);
+        if (isWhite(p) || isGreen(p)) outside++;   // 白 Z / 绿徽章跑到安全圈外 = 会被裁到
+    }
+    assert.strictEqual(outside, 0, `maskable 有 ${outside} 个前景像素落在安全圈外(会被系统裁掉)`);
 });
 
 test('index.html:链接 manifest 与图标,并补 iOS 专用 meta 与亮暗两档 theme-color', () => {
