@@ -74,12 +74,12 @@ test('manifest 里的每个图标都存在,且 PNG 实际尺寸与声明一致',
     }
 });
 
-test('图标像素:圆角外透明、Z 是白的、底色是蓝的、右下角有绿色对勾徽章', () => {
-    // ⚠️ 采样坐标跟着 `icons/icon.svg` 的构图走(蓝底 + 白色 Z + 右下对勾徽章);改构图要同步这里
+test('图标像素:蓝底 + 白色书本 + 书页上的蓝色 Z + 右上角绿色对勾徽章', () => {
+    // ⚠️ 采样坐标跟着 `icons/icon.svg` 的构图走;改构图要同步这里(这是资产守卫,不是布局断言)
     const img = decodePng(path.join(root, 'icons/icon-512.png'));
-    const isWhite = (p) => p[0] > 230 && p[1] > 230 && p[2] > 230;
+    const isWhite = (p) => p[0] > 235 && p[1] > 235 && p[2] > 235;
     const isGreen = (p) => p[1] > p[0] + 25 && p[1] > p[2] + 15;
-    const isBlue = (p) => p[2] > p[0] + 40;
+    const isBlue = (p) => p[2] > p[0] + 40 && p[2] > 150;
     const count = (x0, x1, y0, y1, fn) => {
         let n = 0;
         for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) if (fn(img.at(x, y))) n++;
@@ -87,21 +87,25 @@ test('图标像素:圆角外透明、Z 是白的、底色是蓝的、右下角�
     };
     assert.strictEqual(img.at(2, 2)[3], 0, '圆角外应完全透明(否则安卓/iOS 会看到白角)');
 
-    // ① 底:主色蓝(渐变,上下取样都该是蓝)
-    assert.ok(isBlue(img.at(70, 110)) && isBlue(img.at(80, 430)), '底色应是主色蓝');
+    // ① 底:主色蓝
+    assert.ok(isBlue(img.at(60, 90)) && isBlue(img.at(430, 300)), '底色应是主色蓝');
 
-    // ② Z 元素:中左区域大片纯白(两横 + 一斜)
-    const zWhite = count(130, 340, 130, 350, isWhite);
-    assert.ok(zWhite > 8000, `Z 应是白色且占据中左区域,实测白色像素 ${zWhite}`);
+    // ② 书本元素:下半部大片白(两页)
+    const pageWhite = count(100, 420, 260, 450, isWhite);
+    assert.ok(pageWhite > 10000, `书页应是白色且占据下半部,实测白色像素 ${pageWhite}`);
 
-    // ③ 刷题元素:右下角的绿色对勾徽章
-    const badgeGreen = count(280, 460, 260, 440, isGreen);
-    assert.ok(badgeGreen > 3000, `右下角应有绿色徽章,实测绿色像素 ${badgeGreen}`);
-    assert.ok(count(330, 410, 318, 388, isWhite) > 150, '徽章里应有白色对勾');
+    // ③ Z 元素:写在书页上 → 页面同一取样点上应是**蓝色**(两横 + 一斜都取到)
+    for (const [x, y, where] of [[256, 311, '上横'], [256, 341, '斜杠'], [256, 371, '下横']]) {
+        assert.ok(isBlue(img.at(x, y)), `Z 的${where}应是蓝色的(写在白页上)`);
+    }
+    assert.ok(count(200, 315, 290, 392, isBlue) > 2000, '书页上的 Z 应有足够面积');
 
-    // ④ 徽章与 Z 之间必须有"镂空圈"(蓝),否则白 Z 与白勾会糊成一块
-    const rayX = Math.round(368 + 76 * 0.707), rayY = Math.round(352 + 76 * 0.707);
-    assert.ok(isBlue(img.at(rayX, rayY)), `徽章外应有一圈底色(镂空),实测 rgb(${img.at(rayX, rayY)})`);
+    // ④ 刷题元素:右上角的绿色对勾徽章 + 里面的白勾 + 外面一圈镂空
+    const badgeGreen = count(300, 460, 90, 230, isGreen);
+    assert.ok(badgeGreen > 3000, `右上角应有绿色徽章,实测绿色像素 ${badgeGreen}`);
+    assert.ok(count(340, 420, 120, 200, isWhite) > 100, '徽章里应有白色对勾');
+    const ringX = Math.round(380 + 66 * 0.707), ringY = Math.round(158 + 66 * 0.707);
+    assert.ok(isBlue(img.at(ringX, ringY)), `徽章外应有一圈底色(镂空),实测 rgb(${img.at(ringX, ringY)})`);
 
     // ⑤ iOS 会把透明底填成黑/白块,所以 touch icon 必须不透明;maskable 由系统裁切,底必须铺满
     for (const f of ['icons/apple-touch-icon-180.png', 'icons/maskable-512.png']) {
@@ -109,15 +113,16 @@ test('图标像素:圆角外透明、Z 是白的、底色是蓝的、右下角�
         assert.strictEqual(png.ch, 3, `${f} 不应带 alpha 通道`);
         assert.ok(isBlue(png.at(2, 2)), `${f} 的角上应是实心底色`);
     }
-    // maskable:内容(含右下徽章)必须留在中央 80% 安全圈内 —— 半径 205 / 512 的一半
+
+    // ⑥ maskable:前景(书本 + 徽章,**不含底色**)必须全部留在中央 80% 安全圈(半径 205)内,
+    //    否则安卓把它裁成圆形/水滴形时会把书角或徽章切掉
     const mk = decodePng(path.join(root, 'icons/maskable-512.png'));
-    const r = (256 * 0.8);
     let outside = 0;
     for (let y = 0; y < mk.h; y++) for (let x = 0; x < mk.w; x++) {
         const dx = x - 256, dy = y - 256;
-        if (dx * dx + dy * dy <= r * r) continue;
+        if (dx * dx + dy * dy <= 204.8 * 204.8) continue;
         const p = mk.at(x, y);
-        if (isWhite(p) || isGreen(p)) outside++;   // 白 Z / 绿徽章跑到安全圈外 = 会被裁到
+        if (isWhite(p) || isGreen(p)) outside++;
     }
     assert.strictEqual(outside, 0, `maskable 有 ${outside} 个前景像素落在安全圈外(会被系统裁掉)`);
 });
