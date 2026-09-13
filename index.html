@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1064">
+    <link rel="stylesheet" href="styles.css?v=1065">
 </head>
 <body>
     <div class="container">
@@ -44,41 +44,59 @@
 
         <main>
             <section id="home-section" class="section active">
-            <div class="operation-card">
+            <!-- 首页(👤 2026-09-13 重构:简洁易读、主次得当、手机优先)。
+                 层次只有三层:① 主任务(粘贴 → 解析预览)② 补救路径(AI 理顺格式,默认收起)
+                 ③ 参考(支持格式,默认收起)。
+                 ⚠️ 全页只允许**一个主色实心按钮**(#paste-parse-btn);其余一律次要。
+                 ⚠️ 「导入撤销」不再独占一张卡片(它与主任务不是一回事,却和它等重)—— 收成卡片里的一行。 -->
+            <div class="operation-card home-import">
                 <div class="card-head">
                     <h3>导入题库</h3>
                     <button type="button" id="ai-settings-btn" class="card-link">⚙ AI 设置</button>
                 </div>
-                <textarea id="paste-input" rows="8" placeholder="① 把题目文字粘贴到这里（网页 / 微信 / Word 里直接复制）&#10;② 或点下方「选择文件」上传 txt / docx——文字会读进本框，可编辑"></textarea>
+                <textarea id="paste-input" rows="6" placeholder="① 把题目文字粘贴到这里（网页 / 微信 / Word 里直接复制）&#10;② 或点下方「选择文件」上传 txt / docx——文字会读进本框，可编辑"></textarea>
                 <div class="paste-actions">
-                    <button id="upload-btn" class="action-btn secondary">📂 选择文件</button>
-                    <button id="paste-parse-btn" class="action-btn">解析并预览</button>
-                    <button id="paste-clear-btn" class="action-btn secondary">清空</button>
+                    <button id="paste-parse-btn" class="action-btn paste-primary">解析并预览</button>
+                    <div class="paste-actions-minor">
+                        <button id="upload-btn" class="action-btn secondary">📂 选择文件</button>
+                        <button id="paste-clear-btn" class="action-btn secondary">清空</button>
+                    </div>
                 </div>
                 <input type="file" id="file-input" class="hidden" accept=".txt,.md,.csv,.json,.docx,.pdf,.doc" />
                 <div id="import-status" class="status-line">还没有内容：粘贴文字，或点「选择文件」</div>
 
-                <!-- 救援区 A/B：常驻展示，两条路一眼可选 -->
-                <div id="ai-rescue" class="rescue-box">
-                    <p class="rescue-title">解析不出来？用「AI 格式整理（不改内容）」把原文理顺（二选一）</p>
-                    <div class="rescue-grid">
-                        <div class="rescue-col">
-                            <h4>A · 手动整理（免费，自行去 AI 操作）—— 只改格式，不动内容</h4>
-                            <button id="copy-prompt-btn" class="action-btn">① 📋 复制提示词+题目</button>
-                            <p class="rescue-hint">② 粘贴到豆包 / Kimi / DeepSeek 发送<br>③ 把 AI 回复<b>复制回来，粘到上方输入框</b></p>
-                            <button type="button" id="prompt-toggle-btn" class="prompt-toggle">查看提示词内容 ▾</button>
-                            <pre id="prompt-content" class="prompt-content hidden"></pre>
-                        </div>
-                        <div class="rescue-col">
-                            <h4>B · 自动整理（配置 Key，现场直接整理）—— 只改格式，不动内容</h4>
-                            <button type="button" id="rescue-ai-btn" class="action-btn">🤖 AI 格式整理并填入输入框</button>
-                            <p class="rescue-hint">配置 Key 后一键整理，结果<b>自动填进输入框</b>（逐题带 🤖 标记）。<br><b>它不会替你编答案</b>：材料里没有答案的题一律留空。<br>Key 在右上角 ⚙ AI 设置 里配，仅存本机。</p>
-                        </div>
+                <!-- 撤销:一行内联(与导入同属"这一批数据",不另起一张卡片抢权重) -->
+                <div class="import-undo-row">
+                    <span id="last-import-info" class="meta-note">暂无导入记录</span>
+                    <button id="undo-import-btn" class="action-btn small secondary">撤销上次导入</button>
+                </div>
+            </div>
+
+            <!-- ② 补救路径:解析不出来时用 AI 把原文理顺(默认收起)
+                 ⚠️ 这里改成折叠(原来常驻两列):它只在前一步失败后才用得上,
+                    常驻会占掉手机半屏、还和主任务抢注意力;两条路仍在同一处,一眼可选。 -->
+            <details id="ai-rescue" class="home-fold">
+                <summary class="home-fold-summary">解析不出来？用「AI 格式整理（不改内容）」把原文理顺</summary>
+                <div class="rescue-grid">
+                    <div class="rescue-col">
+                        <h4>A · 手动整理（免费，自行去 AI 操作）—— 只改格式，不动内容</h4>
+                        <button id="copy-prompt-btn" class="action-btn secondary">① 📋 复制提示词+题目</button>
+                        <p class="rescue-hint">② 粘贴到豆包 / Kimi / DeepSeek 发送<br>③ 把 AI 回复<b>复制回来，粘到上方输入框</b></p>
+                        <button type="button" id="prompt-toggle-btn" class="prompt-toggle">查看提示词内容 ▾</button>
+                        <pre id="prompt-content" class="prompt-content hidden"></pre>
+                    </div>
+                    <div class="rescue-col">
+                        <h4>B · 自动整理（配置 Key，现场直接整理）—— 只改格式，不动内容</h4>
+                        <button type="button" id="rescue-ai-btn" class="action-btn secondary">🤖 AI 格式整理并填入输入框</button>
+                        <p class="rescue-hint">配置 Key 后一键整理,结果<b>自动填进输入框</b>（逐题带 🤖 标记）。<br><b>它不会替你编答案</b>：材料里没有答案的题一律留空。<br>Key 在右上角 ⚙ AI 设置 里配，仅存本机。</p>
                     </div>
                 </div>
+            </details>
 
-                <details id="format-help" class="rescue-box">
-                    <summary>支持的题目格式（自动识别，无需选择）</summary>
+            <!-- ③ 参考材料(默认收起) -->
+            <details id="format-help" class="home-fold">
+                <summary class="home-fold-summary">支持的题目格式（自动识别，无需选择）</summary>
+                <div class="home-fold-body">
                     <p>编号式 / 字段式 / 单行混排 / 判断题四种常见排版自动识别；答案可写在行内、行末括号或文末答案表。</p>
                     <pre>① 字段式
 题目：xxx
@@ -95,18 +113,8 @@ A：选项A  B：选项B
   1.B  2.【A】  3-5 BBA
 · 判断语境：空括号"（ ）"视为对（只标错惯例）</pre>
                     <p class="meta-note">双行选项、逗号与空格分隔、选项折行、空括号等真实文档排版自动容错；缺答案题入库为"待补"。</p>
-                </details>
-            </div>
-
-            <div class="operation-card">
-                <h3>导入撤销</h3>
-                <p id="last-import-info" class="meta-note">暂无导入记录</p>
-                <div class="undo-actions">
-                    <button id="undo-import-btn" class="action-btn secondary">撤销上次导入</button>
-                    <p class="meta-note">覆盖导入/去重等操作前的内容,可在「题库 → 库卡 → 🕘 版本」恢复</p>
                 </div>
-                <p class="meta-note">导入后手动修改过的题目不会被误删（按内容指纹识别）</p>
-            </div>
+            </details>
             </section>
 
             <section id="quiz-section" class="section">
@@ -655,6 +663,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1064"></script>
+    <script type="module" src="src/main.js?v=1065"></script>
 </body>
 </html>

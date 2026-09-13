@@ -152,6 +152,51 @@ test('宽度档位唯一来源:不得在别处写死 max-width 像素', () => {
     }
 });
 
+test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13 重构)', () => {
+    const home = html.slice(html.indexOf('id="home-section"'), html.indexOf('id="quiz-section"'));
+    // ① 只有一张主卡片:撤销不再是独立卡片(它与主任务不是一回事,却曾和它等重)
+    assert.strictEqual((home.match(/class="operation-card/g) || []).length, 1,
+        '首页只该有一张 operation-card(导入撤销应并进来,不再单列一张)');
+    assert.ok(home.indexOf('last-import-info') > home.indexOf('operation-card')
+        && home.indexOf('last-import-info') < home.indexOf('ai-rescue'),
+        '撤销那一行应在导入卡片**里面**(卡片末尾),而不是另起一块');
+    // ② 主次:唯一的主色实心按钮 = 解析并预览;其余动作一律 secondary
+    const btnClasses = [...home.matchAll(/class="action-btn([^"]*)"/g)].map(m => m[1].trim());
+    const primary = btnClasses.filter(c => !c.includes('secondary'));
+    assert.strictEqual(primary.length, 1, `首页只该有一个实心主按钮,实际 ${primary.length} 个:${JSON.stringify(btnClasses)}`);
+    assert.ok(home.includes('id="paste-parse-btn" class="action-btn paste-primary"'),
+        '主键应是「解析并预览」');
+    for (const id of ['upload-btn', 'paste-clear-btn', 'undo-import-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
+        const re = new RegExp(`id="${id}" class="action-btn[^"]*secondary`);
+        assert.ok(re.test(home), `${id} 应是次要按钮(描边),不与主键争视觉重量`);
+    }
+    // ③ 补救路径与参考材料默认**收起**(它们不是主任务,常驻会占掉手机半屏)
+    for (const id of ['ai-rescue', 'format-help']) {
+        assert.ok(new RegExp(`<details id="${id}" class="home-fold">`).test(home), `${id} 应是折叠块`);
+    }
+    assert.ok(!/<details id="(ai-rescue|format-help)"[^>]*\sopen/.test(home), '折叠块默认不展开');
+    // ④ 折叠块也走阅读档宽度(与首页卡片同宽,不然桌面上一宽一窄)
+    assert.ok(/#home-section > \.home-fold[^{]*\{[^}]*max-width\s*:\s*var\(--reading-width\)/.test(cssNoComments),
+        '首页折叠块应走阅读档宽度');
+    // ⑤ 手机档:主键 ≥48px、次键 ≥40px —— 主次也体现在尺寸上
+    const media = cssNoComments.slice(cssNoComments.indexOf('max-width: 768px'));
+    assert.ok(/\.paste-primary\s*\{[^}]*min-height\s*:\s*48px/.test(cssNoComments),
+        '主键应 48px(手机拇指目标)');
+    assert.ok(/\.paste-actions-minor \.action-btn\s*\{[^}]*min-height\s*:\s*40px/.test(cssNoComments),
+        '次键应 40px(比主键小一号)');
+    assert.ok(/\.home-fold > summary\s*\{[^}]*min-height\s*:\s*44px/.test(cssNoComments),
+        '折叠摘要应 44px 触达');
+    // ⑥ CSS 里也不许有"第二个主色实心按钮":#upload-btn 曾被 id 特判染成主色,
+    //    类写对了也会被压过去(id 特指度更高)—— 这种"暗桩"必须由测试兜住
+    for (const id of ['upload-btn', 'paste-clear-btn', 'undo-import-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
+        const re = new RegExp(`#${id}\\s*\\{[^}]*background-color\\s*:\\s*var\\\(--c-primary\\\)`);
+        assert.ok(!re.test(cssNoComments), `#${id} 被单独染成主色了 —— 首页只许有一个实心主键`);
+    }
+    // ⑦ 老规则不许复活:它把所有按钮拉成等宽,主次就没了
+    assert.ok(!/\.paste-actions \.action-btn\s*\{[^}]*flex\s*:\s*1 1 auto/.test(cssNoComments),
+        '「所有按钮等宽」的老规则会把主次抹平,不许复活');
+});
+
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {
     const cssText = String(cssNoComments);
     for (const sel of ['#home-section > .operation-card', '#banks-section > .banks-list']) {
