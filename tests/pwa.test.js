@@ -74,8 +74,8 @@ test('manifest 里的每个图标都存在,且 PNG 实际尺寸与声明一致',
     }
 });
 
-test('图标像素:蓝底 + 白色书本 + 书页上的蓝色 Z + 右上角绿色对勾徽章', () => {
-    // ⚠️ 采样坐标跟着 `icons/icon.svg` 的构图走;改构图要同步这里(这是资产守卫,不是布局断言)
+test('图标像素:蓝底 + 立着的书 + 封面上的蓝色 Z + 右下角绿色对勾徽章', () => {
+    // ⚠️ 采样坐标跟着 `icons/icon.svg` 的构图走(方案 C:立着的书 + 封面上蓝 Z + 右下绿对勾);改构图要同步这里
     const img = decodePng(path.join(root, 'icons/icon-512.png'));
     const isWhite = (p) => p[0] > 235 && p[1] > 235 && p[2] > 235;
     const isGreen = (p) => p[1] > p[0] + 25 && p[1] > p[2] + 15;
@@ -88,23 +88,23 @@ test('图标像素:蓝底 + 白色书本 + 书页上的蓝色 Z + 右上角绿�
     assert.strictEqual(img.at(2, 2)[3], 0, '圆角外应完全透明(否则安卓/iOS 会看到白角)');
 
     // ① 底:主色蓝
-    assert.ok(isBlue(img.at(60, 90)) && isBlue(img.at(430, 300)), '底色应是主色蓝');
+    assert.ok(isBlue(img.at(60, 90)) && isBlue(img.at(450, 470)), '底色应是主色蓝');
 
-    // ② 书本元素:下半部大片白(两页)
-    const pageWhite = count(100, 420, 260, 450, isWhite);
-    assert.ok(pageWhite > 10000, `书页应是白色且占据下半部,实测白色像素 ${pageWhite}`);
+    // ② 书本元素:白书体占中间一大块
+    const bookWhite = count(120, 400, 112, 400, isWhite);
+    assert.ok(bookWhite > 30000, `书体应是白色且占据中央,实测白色像素 ${bookWhite}`);
 
-    // ③ Z 元素:写在书页上 → 页面同一取样点上应是**蓝色**(两横 + 一斜都取到)
-    for (const [x, y, where] of [[256, 311, '上横'], [256, 341, '斜杠'], [256, 371, '下横']]) {
-        assert.ok(isBlue(img.at(x, y)), `Z 的${where}应是蓝色的(写在白页上)`);
+    // ③ Z 元素:写在书封面上 → 三个取样点都应是**蓝色**(上横 / 斜杠 / 下横)
+    for (const [x, y, where] of [[253, 173, '上横'], [253, 240, '斜杠'], [253, 307, '下横']]) {
+        assert.ok(isBlue(img.at(x, y)), `Z 的${where}应是蓝色的`);
     }
-    assert.ok(count(200, 315, 290, 392, isBlue) > 2000, '书页上的 Z 应有足够面积');
+    assert.ok(count(180, 325, 150, 330, isBlue) > 8000, '封面上的 Z 应有足够面积');
 
-    // ④ 刷题元素:右上角的绿色对勾徽章 + 里面的白勾 + 外面一圈镂空
-    const badgeGreen = count(300, 460, 90, 230, isGreen);
-    assert.ok(badgeGreen > 3000, `右上角应有绿色徽章,实测绿色像素 ${badgeGreen}`);
-    assert.ok(count(340, 420, 120, 200, isWhite) > 100, '徽章里应有白色对勾');
-    const ringX = Math.round(380 + 66 * 0.707), ringY = Math.round(158 + 66 * 0.707);
+    // ④ 刷题元素:右下角绿色对勾徽章 + 里面的白勾 + 外面一圈镂空
+    const badgeGreen = count(320, 460, 300, 440, isGreen);
+    assert.ok(badgeGreen > 4000, `右下角应有绿色徽章,实测绿色像素 ${badgeGreen}`);
+    assert.ok(count(350, 425, 330, 400, isWhite) > 500, '徽章里应有白色对勾');
+    const ringX = Math.round(386 + 68 * 0.707), ringY = Math.round(366 + 68 * 0.707);
     assert.ok(isBlue(img.at(ringX, ringY)), `徽章外应有一圈底色(镂空),实测 rgb(${img.at(ringX, ringY)})`);
 
     // ⑤ iOS 会把透明底填成黑/白块,所以 touch icon 必须不透明;maskable 由系统裁切,底必须铺满
@@ -114,8 +114,8 @@ test('图标像素:蓝底 + 白色书本 + 书页上的蓝色 Z + 右上角绿�
         assert.ok(isBlue(png.at(2, 2)), `${f} 的角上应是实心底色`);
     }
 
-    // ⑥ maskable:前景(书本 + 徽章,**不含底色**)必须全部留在中央 80% 安全圈(半径 205)内,
-    //    否则安卓把它裁成圆形/水滴形时会把书角或徽章切掉
+    // ⑥ maskable:前景(书体 + 徽章,**不含底色**)必须全部留在中央 80% 安全圈(半径 205)内,
+    //    否则安卓裁成圆形/水滴形时会把书角或徽章切掉
     const mk = decodePng(path.join(root, 'icons/maskable-512.png'));
     let outside = 0, mkWhite = 0, mkGreen = 0;
     for (let y = 0; y < mk.h; y++) for (let x = 0; x < mk.w; x++) {
@@ -128,8 +128,8 @@ test('图标像素:蓝底 + 白色书本 + 书页上的蓝色 Z + 右上角绿�
         if (dx * dx + dy * dy > 204.8 * 204.8) outside++;
     }
     // ⚠️ 先断言"前景真的存在",否则"圈外 0 个"会因为整张图空白而假通过(踩过这种空转断言)
-    assert.ok(mkWhite > 15000 && mkGreen > 3000,
-        `maskable 里书页与徽章都必须在(白 ${mkWhite} / 绿 ${mkGreen})`);
+    assert.ok(mkWhite > 20000 && mkGreen > 3000,
+        `maskable 里书本与徽章都必须在(白 ${mkWhite} / 绿 ${mkGreen})`);
     assert.strictEqual(outside, 0, `maskable 有 ${outside} 个前景像素落在安全圈外(会被系统裁掉)`);
 });
 

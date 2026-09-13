@@ -1,24 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Zquiz">
-  <defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Zquiz"><defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#3b82f6"/>
-      <stop offset="1" stop-color="#1d4ed8"/>
+      <stop offset="0" stop-color="#3b82f6"/><stop offset="1" stop-color="#1d4ed8"/>
     </linearGradient>
-  </defs>
-  <!-- 底:圆角方(radius = 22%),主色渐变 -->
-  <rect width="512" height="512" fill="url(#bg)"/>
-  <g transform="translate(256,256) scale(0.88) translate(-256,-256)">
-  <!-- 书本元素:摊开的两页,中间 16px 缝就是书脊(缝里露出底色,不画线也认得出是书) -->
-  <path d="M 112,290 L 248,266 L 248,414 L 112,438 Z" fill="#fff"/>
-  <path d="M 264,266 L 400,290 L 400,438 L 264,414 Z" fill="#fff"/>
-  <!-- Z 元素:写在书页上(蓝字压白页,对比足);两横 + 一斜 -->
+  </defs><rect width="512" height="512" fill="url(#bg)"/>
+  <g transform="translate(256,256) scale(0.84) translate(-256,-256)">
+  <!-- 书本元素:立着的书。白色书体 + 左侧浅蓝书脊 + 一条更浅的书沟(不画线也认得出是书) -->
+  <rect x="120" y="112" width="272" height="288" rx="18" fill="#fff"/>
+  <rect x="120" y="112" width="40" height="288" rx="18" fill="#dbeafe"/>
+  <rect x="160" y="112" width="6" height="288" fill="#bfdbfe"/>
+  <!-- Z 元素:写在书封面上(蓝字压白封面,对比足) -->
   <g fill="#1d4ed8">
-    <rect x="202" y="296" width="108" height="30" rx="6"/>
-    <rect x="202" y="356" width="108" height="30" rx="6"/>
-    <polygon points="288,326 310,326 224,356 202,356"/>
+    <rect x="183" y="152" width="140" height="42" rx="8"/>
+    <rect x="183" y="286" width="140" height="42" rx="8"/>
+    <polygon points="295,194 323,194 211,286 183,286"/>
   </g>
-  <!-- 刷题元素:右上角对勾徽章(= 答对)。蓝环镂空,把徽章从底上"抠"出来 -->
-  <circle cx="380" cy="158" r="60" fill="#12a150" stroke="#2b6ade" stroke-width="12"/>
-  <polyline points="352,158 370,176 406,136" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
-  </g>
+  <!-- 刷题元素:右下角绿色对勾徽章(= 答对)。蓝环镂空,把徽章从书上"抠"出来 -->
+  <circle cx="386" cy="366" r="62" fill="#12a150" stroke="#2b6ade" stroke-width="12"/>
+  <polyline points="358,366 376,384 412,344" fill="none" stroke="#fff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>  </g>
 </svg>
