@@ -223,6 +223,7 @@ function updateSourceUI() {
 
 // 初始化
 function init() {
+    markStandalone();
     // 主题(暗色模式)先行,避免闪白
     initTheme();
 
@@ -553,6 +554,18 @@ function setupEventListeners() {
 
 
 // 页面加载完成后初始化
+// 已在"装到主屏 / 独立窗口"里运行时,页面上那条"加到主屏"的引导就该消失(P0-1.4)。
+// CSS 侧有 @media (display-mode: standalone);这里再判一次 navigator.standalone ——
+// 老 iOS 不认那个媒体查询,只认这个私有属性,双保险。
+function markStandalone() {
+    const standalone = (typeof window !== 'undefined')
+        && ((window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+            || window.navigator && window.navigator.standalone === true);
+    if (standalone && document.documentElement && document.documentElement.classList) {
+        document.documentElement.classList.add('is-standalone');
+    }
+}
+
 document.addEventListener('DOMContentLoaded', init);
 
 // ==================== 测试钩子(仅 Node vm 测试环境挂载) ====================

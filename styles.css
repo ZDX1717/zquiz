@@ -2806,6 +2806,30 @@ body, .container, .operation-card, .modal-content, .quiz-container, nav {
    所以自己用 [open] 选择器控制显隐,行为才确定。 */
 .recycle-pop:not([open]) > .recycle-pop-panel { display: none; }
 
+/* 「加到主屏」引导(P0-1.4):只在手机档出现,且**已经在独立窗口里跑的时候自动隐藏**。
+   ⚠️ 隐藏靠两条:display-mode 媒体查询(现代浏览器)+ html.is-standalone(main.js,兜老 iOS)。 */
+.install-hint {
+    display: none;
+}
+@media (max-width: 768px) {
+    .install-hint {
+        display: block;
+        margin: 16px 0 0;
+        padding: 10px 12px;
+        border: 1px dashed var(--c-border);
+        border-radius: 8px;
+        background: var(--c-surface-alt);
+        color: var(--c-text-faint);
+        font-size: 12px;
+        line-height: 1.6;
+    }
+    .install-hint b { color: var(--c-text-secondary); font-weight: 600; }
+}
+@media (display-mode: standalone) {
+    .install-hint { display: none !important; }
+}
+html.is-standalone .install-hint { display: none !important; }
+
 /* 悬浮面板:绝对定位在触发器下方,贴右边对齐;本身可滚,不撑高页面 */
 .recycle-pop-panel {
     position: absolute;

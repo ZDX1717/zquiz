@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1059">
+    <link rel="stylesheet" href="styles.css?v=1060">
 </head>
 <body>
     <div class="container">
@@ -267,6 +267,14 @@ A：选项A  B：选项B
                 <div id="banks-list" class="banks-list">
                     <p class="empty-message">暂无题库</p>
                 </div>
+                <!-- 装到主屏的引导(👤 P0-1.4):iOS 没有 beforeinstallprompt,只能"教一句";
+                     位置放在题库页底部、**不做弹窗**;手机档才显示,已在主屏全屏运行时自动隐藏
+                     (CSS 的 display-mode 媒体查询 + main.js 给的 .is-standalone 类,双保险)。 -->
+                <p class="install-hint">
+                    <span aria-hidden="true">📱</span> 手机上可把 Zquiz 加到主屏,像 App 一样全屏用 ——
+                    <b>iPhone</b>:分享 <span aria-hidden="true">⎋</span> → 「添加到主屏幕」;
+                    <b>安卓</b>:浏览器菜单 → 「安装应用 / 添加到主屏幕」
+                </p>
             </section>
         </main>
 
@@ -647,6 +655,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1059"></script>
+    <script type="module" src="src/main.js?v=1060"></script>
 </body>
 </html>

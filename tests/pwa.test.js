@@ -12,6 +12,7 @@ import path from 'node:path';
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(path.join(root, 'index.html'), 'utf8');
 const manifest = JSON.parse(readFileSync(path.join(root, 'manifest.webmanifest'), 'utf8'));
+const cssNoCommentsForPwa = readFileSync(path.join(root, 'styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
 // 最小 PNG 头/像素解码:只为断言"尺寸对不对、圆角外是不是真透明、Z 是不是白的"
 function decodePng(file) {
@@ -111,4 +112,22 @@ test('本批的范围边界:不引入 service worker(离线缓存已由 👤 取
         assert.ok(!/serviceWorker/.test(text), `${f} 里不该出现 serviceWorker 注册(本批不做离线缓存)`);
     }
     assert.ok(!existsSync(path.join(root, 'sw.js')), '本批不该有 sw.js');
+});
+
+test('装到主屏的引导:只在手机档显示,且已装(独立窗口)时自动隐藏', () => {
+    assert.ok(/class="install-hint"/.test(html), '题库页底部应有"加到主屏"的引导');
+    assert.ok(/添加到主屏幕/.test(html) && /安装应用/.test(html), '要分别给出 iPhone 与安卓的操作路径');
+    const hint = cssNoCommentsForPwa.match(/\n\.install-hint \{\n?\s*([^}]*)\}/);
+    assert.ok(hint && /display\s*:\s*none/.test(hint[1]), '默认(桌面档)应隐藏 —— 这条引导只对手机有意义');
+    const media = cssNoCommentsForPwa.slice(cssNoCommentsForPwa.indexOf('max-width: 768px'));
+    assert.ok(/\n\s*\.install-hint \{/.test(cssNoCommentsForPwa.slice(cssNoCommentsForPwa.indexOf('@media (max-width: 768px)'))),
+        '手机档要显示出来');
+    // 已在独立窗口里跑时,不该还在教用户"怎么装"
+    assert.ok(/@media \(display-mode: standalone\) \{\s*\n\s*\.install-hint \{ display: none !important; \}/.test(cssNoCommentsForPwa),
+        'display-mode:standalone 下应隐藏');
+    const mainJs = readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
+    assert.ok(/is-standalone/.test(mainJs) && /navigator\.standalone/.test(mainJs),
+        '还要兜老 iOS:navigator.standalone 为真时加 is-standalone 类');
+    assert.ok(/html\.is-standalone \.install-hint \{ display: none !important; \}/.test(cssNoCommentsForPwa),
+        '缺 is-standalone 的隐藏规则');
 });
