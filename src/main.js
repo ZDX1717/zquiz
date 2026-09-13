@@ -1,5 +1,6 @@
 import { buildAiNotes } from './ai.js';
 import { state } from './state.js';
+import { pushUndo, canUndo, canRedo, undoLabel, redoLabel, clearUndo, assignExact, cloneQuestion } from './undo.js';
 import { applyTheme, initTheme, setThemeSetting } from './theme.js';
 import { buildCardCells, finalizeQuestion, formatQuestionsForExport, normalizeAnswerString, parseQuestionsText, questionDedupKey, shuffleArray, splitInlineOptions, splitBankSections, bankSectionHeader } from './parser.js';
 import { deleteBankVersion, loadAutoNextSetting, loadBankVersions, loadCollapsedBanks, loadFromLocalStorage, loadMasterySetting, pushBankVersion, saveAutoNextSetting, saveCollapsedBanks, saveMasterySetting, saveToLocalStorage, recordImportBatch } from './storage.js';
@@ -16,7 +17,7 @@ import { commitPreviewImport, createNewBank, currentEditBank, dedupBank, deleteB
         switchEditorTab,
     setBankColor,
     renderBankColorPicker,
-    editorAiAnswer, cancelPreviewAi, rescueAiOrganize, updateAiSettingsBadge, editorNavigate, editorRenderForm, editorRenderOptions, editorSaveCurrent, exportAllBanks, exportBank, handleFileSelect, handlePasteEvent, htmlToLines, clearPasteInput, editorHistClick, keepCleanOnly, openImportPreview, parsePastedText, refreshQuestionBankView, togglePromptContent, copyOfficialPrompt, renameBank, renderBankEditor, renderPreview, restoreOverwriteSnapshot, showImportStatus, showRenameModal, togglePreviewSelectAll, undoLastImport, updateBankSelect, updateBanksList, updateLastImportInfo, updatePreviewSummary, updatePreviewTargetBanks, renderErrorsForBank, renderFavoritesForBank, renderRecycleBin, restoreRecycled, recycleBankEntry, restoreBankVersion } from './bank.js';
+    editorAiAnswer, cancelPreviewAi, rescueAiOrganize, updateAiSettingsBadge, editorNavigate, editorRenderForm, editorRenderOptions, editorSaveCurrent, exportAllBanks, exportBank, handleFileSelect, handlePasteEvent, htmlToLines, clearPasteInput, editorHistClick, keepCleanOnly, openImportPreview, parsePastedText, refreshQuestionBankView, togglePromptContent, copyOfficialPrompt, renameBank, renderBankEditor, renderPreview, restoreOverwriteSnapshot, showImportStatus, showRenameModal, togglePreviewSelectAll, editorUndo, editorRedo, updateBankSelect, updateBanksList, updateLastImportInfo, updatePreviewSummary, updatePreviewTargetBanks, renderErrorsForBank, renderFavoritesForBank, renderRecycleBin, restoreRecycled, recycleBankEntry, restoreBankVersion } from './bank.js';
 
 // Zquiz · 期末周刷题 —— 应用装配入口
 // 依赖方向:main → 业务模块(quiz/errorbook/favorites/bank/dom)→ parser/storage/state。
@@ -100,7 +101,6 @@ const copyPromptBtn = document.getElementById('copy-prompt-btn');
 const promptToggleBtn = document.getElementById('prompt-toggle-btn');
 const viewAllBtn = document.getElementById('view-all-btn');
 const viewWarnedBtn = document.getElementById('view-warned-btn');
-const undoImportBtn = document.getElementById('undo-import-btn');
 const previewSkipDupes = document.getElementById('preview-skip-dupes');
 const previewList = document.getElementById('preview-list');
 const previewTargetBankSelect = document.getElementById('preview-target-bank');
@@ -157,6 +157,7 @@ const editorFilterClear = document.getElementById('editor-filter-clear');
 const editorBulkAll = document.getElementById('editor-bulk-all');
 const editorBulkClear = document.getElementById('editor-bulk-clear');
 const editorBulkDeleteBtn = document.getElementById('editor-bulk-delete');
+const editorUndoBtn = document.getElementById('editor-undo-btn');
 const editorSaveBtn = document.getElementById('editor-save-btn');
 const questionCardClose = document.getElementById('question-card-close');
 const questionCardCancel = document.getElementById('question-card-cancel');
@@ -403,6 +404,7 @@ function setupEventListeners() {
     editorBulkDeleteBtn.addEventListener('click', () => editorBulkDelete());
     // 编辑卡片:保存/取消/关闭/上一题/下一题
     editorSaveBtn.addEventListener('click', () => saveQuestionCard());
+    editorUndoBtn.addEventListener('click', () => editorUndo());
     questionCardCancel.addEventListener('click', () => closeQuestionCard());
     questionCardClose.addEventListener('click', () => closeQuestionCard());
     questionCardPrev.addEventListener('click', () => editorCardNavigate(-1));
@@ -423,6 +425,18 @@ function setupEventListeners() {
     confirmRenameBankBtn.addEventListener('click', renameBank);
     exportAllBtn.addEventListener('click', exportAllBanks);
 
+    // 撤销快捷键(👤 2026-09-13)。⚠️ 焦点在输入框里时**不抢键** ——
+    // 那里用户要的是"撤销刚打的字"(浏览器/输入法的职责),抢过来会让人以为键盘坏了。
+    document.addEventListener('keydown', (e) => {
+        if (!(e.ctrlKey || e.metaKey) || String(e.key).toLowerCase() !== 'z') return;
+        const el = e.target;
+        const tag = el && el.tagName ? String(el.tagName).toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || (el && el.isContentEditable)) return;
+        e.preventDefault();
+        if (e.shiftKey) editorRedo();
+        else editorUndo();
+    });
+
     // 粘贴导入
     pasteInput.addEventListener('paste', handlePasteEvent);
     pasteParseBtn.addEventListener('click', parsePastedText);
@@ -437,7 +451,6 @@ function setupEventListeners() {
     previewCleanBtn.addEventListener('click', keepCleanOnly);
 
     // 导入撤销与覆盖快照恢复
-    undoImportBtn.addEventListener('click', undoLastImport);
     previewConfirmBtn.addEventListener('click', commitPreviewImport);
 
     // AI 设置与预览兜底(0.9.0)
@@ -597,7 +610,16 @@ if (typeof window === 'undefined') {
         clearErrors,
         deleteError,
         displayQuestion,
-        undoLastImport,
+        editorUndo,
+        editorRedo,
+        pushUndo,
+        canUndo,
+        canRedo,
+        undoLabel,
+        redoLabel,
+        clearUndo,
+        assignExact,
+        cloneQuestion,
         updateLastImportInfo,
         downloadFile,
         editBank,

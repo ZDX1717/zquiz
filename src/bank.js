@@ -1,7 +1,8 @@
 import { state } from './state.js';
 import { finalizeQuestion, formatAnswerForDisplay, formatQuestionsForExport, normalizeAnswerString, parseQuestionsText, questionDedupKey, splitBankSections, bankSectionHeader, BANK_SECTION_RE } from './parser.js';
-import { deleteBankVersion, renameBankVersions, saveToLocalStorage, loadImportBatches, saveImportBatches, recordImportBatch, loadOverwriteSnapshot, clearOverwriteSnapshot, loadBankVersions, pushBankVersion, loadCollapsedBanks, saveCollapsedBanks } from './storage.js';
+import { deleteBankVersion, renameBankVersions, VERSIONS_PER_BANK, saveToLocalStorage, loadImportBatches, recordImportBatch, loadOverwriteSnapshot, clearOverwriteSnapshot, loadBankVersions, pushBankVersion, loadCollapsedBanks, saveCollapsedBanks } from './storage.js';
 import { downloadFile, hideModal, showModal } from './dom.js';
+import { pushUndo, undo as undoStep, redo as redoStep, canUndo, canRedo, undoLabel, redoLabel, clearUndo, assignExact, cloneQuestion } from './undo.js';
 import { docxToText } from './docx.js';
 import { OFFICIAL_PROMPT, buildCopyText, copyText } from './prompt.js';
 import { toggleFavorite } from './favorites.js';
@@ -75,6 +76,7 @@ const questionCardModal = document.getElementById('question-card-modal');
 const questionCardTitle = document.getElementById('question-card-title');
 const questionCardPrev = document.getElementById('question-card-prev');
 const questionCardNext = document.getElementById('question-card-next');
+const editorUndoBtn = document.getElementById('editor-undo-btn');
 const bankColorNote = document.getElementById('bank-color-note');
 const editorAiAnswerNote = document.getElementById('editor-ai-answer-note');
 const lastImportInfo = document.getElementById('last-import-info');
@@ -1009,15 +1011,24 @@ export function commitPreviewImport() {
         return;
     }
 
+    // 撤销打点:导入前先留一版库内容(👤 2026-09-13:导入也进版本记录,它是最该有安全网的动作)
+    const beforeImport = (state.questionBanks[targetName] || []).slice();
+    if (beforeImport.length > 0) {
+        pushBankVersion(targetName, overwrite ? '覆盖导入前' : '导入前', beforeImport, { source: previewSourceLabel });
+    }
     if (overwrite) {
-        // 覆盖前自动快照,支持"恢复覆盖前快照"(消灭"此操作不可恢复")
-        if (state.questionBanks[targetName].length > 0) {
-            pushBankVersion(targetName, '覆盖导入前', state.questionBanks[targetName]);
-        }
         state.questionBanks[targetName] = finalItems;
     } else {
         state.questionBanks[targetName].push(...finalItems);
     }
+    const afterImport = state.questionBanks[targetName].slice();
+    const setBankArr = (arr) => {
+        state.questionBanks[targetName] = arr;
+        if (state.currentBankName === targetName) state.questionBank = arr;
+    };
+    trackUndo(`导入 ${finalItems.length} 题到「${targetName}」`,
+        () => setBankArr(beforeImport.slice()),
+        () => setBankArr(afterImport.slice()));
 
     // 切换到目标题库
     state.isAllBanksView = false;
@@ -1073,6 +1084,7 @@ function commitSeparateImport() {
 
     const summary = [];
     const touched = [];
+    const undoGroups = [];
     for (const g of groups) {
         const items = [];
         const seen = new Set();
@@ -1092,8 +1104,11 @@ function commitSeparateImport() {
             ? items.filter(q => !new Set(existing.map(questionDedupKey)).has(questionDedupKey(q)))
             : items;
         if (kept.length === 0) { summary.push(`${g.name} 0 题(全重复)`); continue; }
-        if (overwrite && existing.length > 0) pushBankVersion(g.name, '覆盖导入前', existing);
+        if (overwrite && existing.length > 0) pushBankVersion(g.name, '覆盖导入前', existing, { source: previewSourceLabel });
+        else if (existing.length > 0) pushBankVersion(g.name, '导入前', existing, { source: previewSourceLabel });
+        const beforeArr = existing.slice();
         state.questionBanks[g.name] = overwrite ? kept : existing.concat(kept);
+        undoGroups.push({ name: g.name, before: beforeArr, after: state.questionBanks[g.name].slice() });
         touched.push(g.name);
         summary.push(`${g.name} ${kept.length} 题`);
         recordImportBatch({
@@ -1108,6 +1123,19 @@ function commitSeparateImport() {
     if (touched.length === 0) {
         alert('没有可导入的题目（均与目标题库重复）');
         return;
+    }
+
+    // 一次导入涉及多个库 → 一条撤销条目把它们一起回退(用户按一次撤销 = 回到导入前)
+    if (undoGroups.length) {
+        const setAll = (which) => {
+            undoGroups.forEach(g => {
+                const arr = g[which].slice();
+                state.questionBanks[g.name] = arr;
+                if (state.currentBankName === g.name) state.questionBank = arr;
+            });
+        };
+        trackUndo(`导入 ${undoGroups.reduce((n, g) => n + g.after.length - g.before.length, 0)} 题(${undoGroups.length} 个库)`,
+            () => setAll('before'), () => setAll('after'));
     }
 
     // 停在第一个导入的库上,用户接着就能看到结果
@@ -1130,45 +1158,8 @@ function commitSeparateImport() {
 
 // ==================== 导入撤销与覆盖快照恢复 ====================
 
-// 撤销最近一次导入:按批次指纹从目标题库移除,并级联清理错题本/收藏中的同指纹条目
-export function undoLastImport() {
-    const batches = loadImportBatches();
-    const last = batches[batches.length - 1];
-    if (!last) {
-        showImportStatus('没有可撤销的导入记录', 'error');
-        return;
-    }
-    const fpSet = new Set(last.fingerprints || []);
-    const bank = state.questionBanks[last.bank] || [];
-    const keptBank = bank.filter(q => !fpSet.has(questionDedupKey(q)));
-    const removedBank = bank.length - keptBank.length;
-    const keptErr = state.errorQuestions.filter(q => !fpSet.has(questionDedupKey(q)));
-    const removedErr = state.errorQuestions.length - keptErr.length;
-    const keptFav = state.favoriteQuestions.filter(q => !fpSet.has(questionDedupKey(q)));
-    const removedFav = state.favoriteQuestions.length - keptFav.length;
-
-    if (removedBank + removedErr + removedFav === 0) {
-        // 导入的题已被删除或修改(指纹变化):按设计跳过,不误删,批次作废
-        saveImportBatches(batches.slice(0, -1));
-        showImportStatus('上次导入的题目已不存在（可能已被删除或修改），无需撤销', 'error');
-        updateLastImportInfo();
-        return;
-    }
-    if (!confirm(`撤销 ${last.time.replace('T', ' ').slice(0, 16)} 导入到"${last.bank}"的记录？\n将从题库移除 ${removedBank} 题，并同步移除错题本 ${removedErr} 条、收藏 ${removedFav} 条。`)) {
-        return; // 用户取消:批次保留,仍可再次撤销
-    }
-    state.questionBanks[last.bank] = keptBank;
-    state.errorQuestions = keptErr;
-    state.favoriteQuestions = keptFav;
-    if (state.currentBankName === last.bank) state.questionBank = keptBank;
-    saveImportBatches(batches.slice(0, -1));
-    saveToLocalStorage();
-    updateBankSelect();
-    updateBanksList();
-    updateLastImportInfo();
-    showImportStatus(`已撤销导入：从"${last.bank}"移除 ${removedBank} 题（错题本 ${removedErr} 条、收藏 ${removedFav} 条已同步清理）`, 'success');
-}
-
+// 「撤销上次导入」已删除(👤 2026-09-13):批次级撤销语义脆弱(手改过的题指纹变了就撤不掉 → "半撤"),
+// 导入的撤销统一走**题库版本记录** —— 导入前会自动存一版「导入前」,在库卡的版本记录里一键恢复。
 // 恢复覆盖模式导入前的题库快照
 export function restoreOverwriteSnapshot() {
     const snap = loadOverwriteSnapshot();
@@ -1272,6 +1263,7 @@ export function renameBank() {
 
     state.questionBanks[newName] = state.questionBanks[state.currentRenameBank];
     delete state.questionBanks[state.currentRenameBank];
+    clearUndo();   // 改名/删库这类库级操作会把栈里的引用变成悬空,直接清栈(库级回退走回收站)
 
     // 归属同步(P0-1.9):错题/收藏跟随新库名,避免漂进"杂项"
     const oldName = state.currentRenameBank;
@@ -1322,6 +1314,7 @@ export function deleteBank(bankName) {
         return;
     }
 
+    clearUndo();   // 库级操作(删库)→ 清栈:栈里的条目还引着这个库,留着只会在撤销时炸
     // 整体打包入回收站(题 + 该库错题 + 该库收藏)
     recycleBank(bankName, {
         bank: state.questionBanks[bankName] || [],
@@ -1439,6 +1432,14 @@ export function dedupBank(bankName) {
         return;
     }
     pushBankVersion(bankName, '去重前', questions);   // 确认真的会改,才值得占一个版本槽
+    // 去重 = 整库替换:撤销/重做只需把数组换回去(元素是同一批对象引用,不复制数据)
+    const beforeArr = questions.slice();
+    const afterArr = kept.slice();
+    const setBankArr = (arr) => {
+        state.questionBanks[bankName] = arr;
+        if (state.currentBankName === bankName) state.questionBank = arr;
+    };
+    trackUndo(`去重(删 ${removed} 题)`, () => setBankArr(beforeArr.slice()), () => setBankArr(afterArr.slice()));
     state.questionBanks[bankName] = kept;
     if (state.currentBankName === bankName) {
         state.questionBank = kept;
@@ -1472,10 +1473,15 @@ function setEditBankTitle(bankName) {
 export function editorAddQuestion() {
     if (!editorGuard()) return;
     const questions = currentEditBank();
-    questions.push({
+    const created = {
         content: '', type: '单选', options: { A: '', B: '', C: '', D: '' }, answer: '',
         explanation: '', analysis: '', optionExplanations: {}, confidence: 1, raw: ''
-    });
+    };
+    questions.push(created);
+    const addBank = state.editBankName;
+    trackUndo('新增题目',
+        () => { const arr = state.questionBanks[addBank] || []; const i = arr.indexOf(created); if (i !== -1) arr.splice(i, 1); },
+        () => { const arr = state.questionBanks[addBank] || []; arr.push(created); });
     state.editIndex = questions.length - 1;
     // ⚠️ 新增前先清掉筛选:刚加的题很可能不满足当前筛选条件,那样它会"加进去了但列表里看不见",
     //    用户只会以为没加上。清筛选是一次点击就能恢复的代价,比"看不见"轻得多(👤 反馈过同类困惑)。
@@ -1594,6 +1600,9 @@ export function editorSaveCurrent(silent) {
         return false;
     }
 
+    // 撤销打点:存**这一道题**的旧值(改前);保存完成后在末尾比对,真变了才记一步
+    const beforeSnapshot = cloneQuestion(q);
+    const undoLabelText = `改第 ${state.editIndex + 1} 题的答案/题干`;
     const wasAi = q.aiSource === 'ai';
     const wasPending = !q.answer;
     // AI 是否动过这一题:答案或解析的**内容仍等于 AI 当初填的值** → AI 出的;
@@ -1624,6 +1633,13 @@ export function editorSaveCurrent(silent) {
     }
     if (wasPending && q.answer) pushHistMark(q, 'pending');
 
+    // 真改过才记一步(静默保存/原样保存不该污染撤销栈)
+    const afterSnapshot = cloneQuestion(q);
+    if (editableSignature(beforeSnapshot) !== editableSignature(afterSnapshot)) {
+        trackUndo(undoLabelText,
+            () => assignExact(q, beforeSnapshot),
+            () => assignExact(q, afterSnapshot));
+    }
     saveToLocalStorage();
     state.editorDirty = false;
     // keepList = true:保存不该把用户拉开的题号列表又合上(他可能正靠着列表连续核对)
@@ -1837,6 +1853,22 @@ export function editorBulkDelete() {
     if (state.editorDirty && !confirm('当前题目的修改尚未保存，确定放弃并删除吗？')) return false;
     if (!confirm(`确定删除选中的 ${targets.length} 道题吗？此操作不可恢复！`)) return false;
     if (targets.length >= 2) pushBankVersion(state.editBankName, '批量删除前', questions);
+    // 撤销要"原位放回":记下每道被删的题与其原下标(升序插回才不会错位)
+    const removedItems = questions.map((q, idx) => ({ q, idx })).filter(({ q }) => targets.indexOf(q) !== -1);
+    const delBank = state.editBankName;
+    const applyDelete = () => {
+        const set = new Set(removedItems.map(r => r.q));
+        const arr = (state.questionBanks[delBank] || []).filter(q => !set.has(q));
+        state.questionBanks[delBank] = arr;
+        if (state.currentBankName === delBank) state.questionBank = arr;
+    };
+    trackUndo(removedItems.length > 1 ? `删除 ${removedItems.length} 道题` : '删除题目',
+        () => {
+            const arr = state.questionBanks[delBank] || [];
+            removedItems.forEach(({ q, idx }) => arr.splice(Math.min(idx, arr.length), 0, q));
+            if (state.currentBankName === delBank) state.questionBank = arr;
+        },
+        applyDelete);
     const kept = questions.filter(q => targets.indexOf(q) === -1);
     state.questionBanks[state.editBankName] = kept;
     if (state.currentBankName === state.editBankName) state.questionBank = kept;
@@ -2028,6 +2060,46 @@ export function editorCollectOptions() {
     return opts;
 }
 
+
+// ==================== 编辑级撤销(👤 2026-09-13:会话内、内存、深度 50)====================
+// 打点纪律:**动 state 之前**先把旧值抓下来;闭包只负责改回 state,
+// 落盘 + 刷新视图由这里统一做(调用点就不必各写一遍)。
+function trackUndo(label, undoFn, redoFn) {
+    pushUndo({
+        label,
+        undo: () => { undoFn(); saveToLocalStorage(); refreshQuestionBankView(); },
+        redo: () => { redoFn(); saveToLocalStorage(); refreshQuestionBankView(); },
+    });
+}
+
+// "内容真的变了吗"只看**用户可见的字段**:保存会顺手写内部标记(_typeExplicit)与来源标注
+// (answerSource=null 之类),拿整对象比会把"原样保存"也当成一步 —— 撤销栈里就全是噪音。
+function editableSignature(q) {
+    // ⚠️ 缺键、null、空串要归一成同一个值:保存会顺手补齐 explanation/analysis 这些空字段,
+    //    不归一的话"原样保存"也会被判定成改过(踩过)。
+    const txt = (v) => (v === undefined || v === null ? '' : String(v));
+    const opts = (q.options && Object.keys(q.options).length) ? q.options : {};
+    return JSON.stringify([txt(q.content), txt(q.type), opts, txt(q.answer), txt(q.explanation), txt(q.analysis)]);
+}
+
+function afterUndoRedo() {
+    state.editorDirty = false;
+    if (state.editBankName) renderBankEditor();
+    updateBanksList();
+    updateBankSelect();
+}
+
+export function editorUndo() {
+    if (!undoStep()) return false;
+    afterUndoRedo();
+    return true;
+}
+
+export function editorRedo() {
+    if (!redoStep()) return false;
+    afterUndoRedo();
+    return true;
+}
 
 // 未保存修改守卫：返回 true 表示可以继续（已放弃或无修改）
 export function editorGuard() {
@@ -2490,14 +2562,39 @@ export function renderVersionsForBank(bankName) {
 
     const head = document.createElement('p');
     head.className = 'editor-panel-title';
-    head.textContent = `版本记录（${versions.length}）`;
+    head.textContent = `版本记录（${versions.length} / ${VERSIONS_PER_BANK}）`;
     wrap.appendChild(head);
+
+    // 会话内撤销/重做(👤 2026-09-13):细活走撤销栈,大安全网走下面的版本列表 —— 两者分工写在这里
+    const stepRow = document.createElement('div');
+    stepRow.className = 'version-step-row';
+    const undoBtn = document.createElement('button');
+    undoBtn.type = 'button';
+    undoBtn.className = 'action-btn small secondary';
+    undoBtn.textContent = '↩︎ 撤销上一步';
+    undoBtn.disabled = !canUndo();
+    undoBtn.title = canUndo() ? `撤销:${undoLabel()}` : '本次会话还没有可撤销的编辑';
+    undoBtn.addEventListener('click', () => editorUndo());
+    const redoBtn = document.createElement('button');
+    redoBtn.type = 'button';
+    redoBtn.className = 'action-btn small secondary';
+    redoBtn.textContent = '↪︎ 重做';
+    redoBtn.disabled = !canRedo();
+    redoBtn.title = canRedo() ? `重做:${redoLabel()}` : '没有可重做的步骤';
+    redoBtn.addEventListener('click', () => editorRedo());
+    stepRow.appendChild(undoBtn);
+    stepRow.appendChild(redoBtn);
+    const stepNote = document.createElement('span');
+    stepNote.className = 'meta-note';
+    stepNote.textContent = '撤销栈只在本次会话有效(刷新即清);跨会话回退用下面的版本列表';
+    stepRow.appendChild(stepNote);
+    wrap.appendChild(stepRow);
 
     const note = document.createElement('p');
     note.className = 'meta-note';
     note.textContent = versions.length
-        ? '覆盖导入 / 去重 / 恢复前会自动存一份;每库保留最近 3 版。'
-        : '暂无版本。覆盖导入、去重、恢复等操作会自动存一份,可随时回退。';
+        ? `导入 / 覆盖导入 / 去重 / 批量删除 / 恢复前都会自动存一份;每库保留最近 ${VERSIONS_PER_BANK} 版。`
+        : `暂无版本。导入、覆盖导入、去重、批量删除、恢复等操作都会自动存一份,可随时回退(每库 ${VERSIONS_PER_BANK} 版)。`;
     wrap.appendChild(note);
     if (versions.length === 0) return wrap;
 
@@ -2505,7 +2602,8 @@ export function renderVersionsForBank(bankName) {
     versions.map((v, i) => ({ v, i })).reverse().forEach(({ v, i }) => {
         const when = new Date(v.time);
         const pad = (n) => String(n).padStart(2, '0');
-        const label = `${v.action} · ${when.getMonth() + 1}/${when.getDate()} ${pad(when.getHours())}:${pad(when.getMinutes())} · ${(v.questions || []).length} 题`;
+        const label = `${v.action} · ${when.getMonth() + 1}/${when.getDate()} ${pad(when.getHours())}:${pad(when.getMinutes())} · ${(v.questions || []).length} 题`
+            + (v.source ? ` · ${v.source}` : '');
 
         const item = document.createElement('div');
         item.className = 'version-item';
@@ -2592,7 +2690,14 @@ export function restoreBankVersion(name, index) {
     const v = versions[index];
     if (!v) return false;
     pushBankVersion(name, '恢复前自动存', state.questionBanks[name] || []);
+    const beforeRestore = (state.questionBanks[name] || []).slice();
     state.questionBanks[name] = JSON.parse(JSON.stringify(v.questions));
+    const afterRestore = state.questionBanks[name].slice();
+    const setBankArr = (arr) => {
+        state.questionBanks[name] = arr;
+        if (state.currentBankName === name) state.questionBank = arr;
+    };
+    trackUndo(`恢复到「${v.action}」那一版`, () => setBankArr(beforeRestore.slice()), () => setBankArr(afterRestore.slice()));
     // 先对齐当前视图引用,再落盘(否则旧引用会把恢复结果覆盖回去)
     if (state.currentBankName === name) state.questionBank = state.questionBanks[name];
     saveToLocalStorage();
@@ -2662,6 +2767,11 @@ export function editorHistClick(e) {
 
 export function renderBankEditor() {
     renderBankColorPicker();
+    // 撤销键的状态跟着栈走(卡片里那颗)
+    if (editorUndoBtn) {
+        editorUndoBtn.disabled = !canUndo();
+        editorUndoBtn.title = canUndo() ? `撤销:${undoLabel()}（⌘/Ctrl+Z）` : '本次会话还没有可撤销的编辑';
+    }
     // 首次渲染时把标签页定到"编辑题目"(HTML 里也有默认值,这里是双保险 ——
     // 缺了它首屏会出现"两页都隐藏"的空壳,实测踩过)
     if (!editorBody || !editorBody.getAttribute('data-tab')) switchEditorTab('question');

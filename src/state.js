@@ -41,6 +41,11 @@ export const state = {
     // 多选:存的是**题目对象本身**,不是下标 —— 删/筛/去重都会让下标移位,
     // 存下标就会出现"删了第 2 题,第 3 题莫名被选中/删掉"(踩过同类坑)
     editorSelected: [],
+    // 编辑级撤销栈(👤 2026-09-13 定:只放内存、会话内)。
+    // 存的是**闭包**(每条自带 undo/redo + 一句人话标签);因为不落盘、不序列化,闭包是最省事也最稳的表示。
+    // 深度上限 50,超了丢最旧;任何新动作都会清空 redoStack。
+    undoStack: [],
+    redoStack: [],
     // 题目列表筛选(👤 2026-09-12):组内**任一**、组间**同时**。
     //   status: pending(待补答案) / noAnalysis(缺解析) / noExplanation(缺解释) / fewOptions(选项不足)
     //   ai    : touched(AI 整理过) / answer(答案来自 AI) / analysis(解析来自 AI)

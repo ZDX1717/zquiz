@@ -157,16 +157,19 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
     // ① 只有一张主卡片:撤销不再是独立卡片(它与主任务不是一回事,却曾和它等重)
     assert.strictEqual((home.match(/class="operation-card/g) || []).length, 1,
         '首页只该有一张 operation-card(导入撤销应并进来,不再单列一张)');
-    assert.ok(home.indexOf('last-import-info') > home.indexOf('operation-card')
-        && home.indexOf('last-import-info') < home.indexOf('ai-rescue'),
-        '撤销那一行应在导入卡片**里面**(卡片末尾),而不是另起一块');
+    // 「撤销上次导入」已删(👤 2026-09-13:导入的撤销统一走**题库版本记录**);
+    // 「上次导入」信息挪到题库页,只作展示
+    assert.ok(!home.includes('undo-import-btn') && !home.includes('last-import-info'),
+        '首页不该再有撤销按钮,也不该再显示"上次导入"(它搬去题库页了)');
+    assert.ok(html.indexOf('id="last-import-info"') > html.indexOf('id="banks-section"'),
+        '「上次导入」信息应在题库页');
     // ② 主次:唯一的主色实心按钮 = 解析并预览;其余动作一律 secondary
     const btnClasses = [...home.matchAll(/class="action-btn([^"]*)"/g)].map(m => m[1].trim());
     const primary = btnClasses.filter(c => !c.includes('secondary'));
     assert.strictEqual(primary.length, 1, `首页只该有一个实心主按钮,实际 ${primary.length} 个:${JSON.stringify(btnClasses)}`);
     assert.ok(home.includes('id="paste-parse-btn" class="action-btn paste-primary"'),
         '主键应是「解析并预览」');
-    for (const id of ['upload-btn', 'paste-clear-btn', 'undo-import-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
+    for (const id of ['upload-btn', 'paste-clear-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
         const re = new RegExp(`id="${id}" class="action-btn[^"]*secondary`);
         assert.ok(re.test(home), `${id} 应是次要按钮(描边),不与主键争视觉重量`);
     }
@@ -188,7 +191,7 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
         '折叠摘要应 44px 触达');
     // ⑥ CSS 里也不许有"第二个主色实心按钮":#upload-btn 曾被 id 特判染成主色,
     //    类写对了也会被压过去(id 特指度更高)—— 这种"暗桩"必须由测试兜住
-    for (const id of ['upload-btn', 'paste-clear-btn', 'undo-import-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
+    for (const id of ['upload-btn', 'paste-clear-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
         const re = new RegExp(`#${id}\\s*\\{[^}]*background-color\\s*:\\s*var\\\(--c-primary\\\)`);
         assert.ok(!re.test(cssNoComments), `#${id} 被单独染成主色了 —— 首页只许有一个实心主键`);
     }
@@ -862,10 +865,11 @@ test('版本记录住在「题库设置」里,且每条都能删(👤 2026-09-11
     assert.ok(!/renderVersionsForBank/.test(cardRegion), '库卡渲染里不该再挂版本面板');
     // ② 版本面板要有删除(👤 反馈的缺口:原来只能存不能删)
     assert.ok(/export function renderVersionsForBank/.test(bank), '应有版本面板渲染');
+    // ⚠️ 别在面板源码上切固定字数窗口:面板里后来加了"撤销/重做"一行,窗口一变窄就误判(踩过)
     const panel = bank.slice(bank.indexOf('export function renderVersionsForBank'));
-    assert.ok(/version-del/.test(panel.slice(0, 3000)), '每条版本都要有删除键');
-    assert.ok(/deleteBankVersion/.test(panel.slice(0, 3000)), '删除键要调用 deleteBankVersion');
-    assert.ok(/confirm\(/.test(panel.slice(0, 3000)), '删版本要二次确认');
+    assert.ok(/version-del/.test(panel), '每条版本都要有删除键');
+    assert.ok(/deleteBankVersion/.test(panel), '删除键要调用 deleteBankVersion');
+    assert.ok(/confirm\(/.test(panel), '删版本要二次确认');
     // ③ 恢复与删除都按**原数组下标**定位,不是显示顺序(列表是倒序渲染的)
     assert.ok(/map\(\(v, i\) => \(\{ v, i \}\)\)\.reverse\(\)/.test(panel), '倒序渲染时必须保留原下标');
     // ④ 去重只在"真有重复"时才存版本(别让无意义的安全网占满 3 个槽)

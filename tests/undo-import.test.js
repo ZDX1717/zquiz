@@ -7,7 +7,7 @@ import { loadApp } from './helpers/vm-harness.mjs';
 
 const mkQ = (content) => ({ content, type: '单选', options: { A: '甲', B: '乙' }, answer: 'A', confidence: 1, bankName: '刑法' });
 
-describe('导入批次记录 + 撤销上次导入', () => {
+describe('导入批次记录 + 「导入前」自动存版(👤 2026-09-13:撤销统一走版本记录)', () => {
     let run, elements, store;
     before(async () => {
         ({ run, elements, store } = await loadApp({ confirmResult: true }));
@@ -24,44 +24,49 @@ describe('导入批次记录 + 撤销上次导入', () => {
         run('commitPreviewImport()');
     });
 
-    test('导入成功且批次已记录(指纹 2 条,信息栏刷新)', () => {
+    test('导入成功且批次已记录(指纹 2 条,题库页信息栏刷新)', () => {
         assert.strictEqual(run(`questionBanks['刑法'].length`), 3);
         const batches = JSON.parse(store.get('importBatches'));
         assert.strictEqual(batches.length, 1);
         assert.strictEqual(batches[0].fingerprints.length, 2);
         assert.strictEqual(batches[0].bank, '刑法');
+        // 批次记录现在只作**展示**(「上次导入:…」在题库页),不再承担撤销职责
         assert.ok(elements['last-import-info'].textContent.includes('刑法'));
     });
 
-    test('撤销:题库/错题本/收藏按指纹级联清理', () => {
-        run('undoLastImport()');
+    test('导入**也**进版本记录:自动存了一版「导入前」,带题数与来源', () => {
+        const versions = JSON.parse(run(`JSON.stringify(loadBankVersions()['刑法'] || [])`));
+        assert.strictEqual(versions.length, 1, '导入前应自动存一版');
+        assert.strictEqual(versions[0].action, '导入前');
+        assert.strictEqual(versions[0].questions.length, 1, '存的是导入**前**的内容(1 题)');
+        assert.strictEqual(versions[0].questions[0].content, 'OLD');
+        assert.ok(versions[0].source, '版本条目要带来源,否则一列"导入前"认不出哪次是哪次');
+    });
+
+    test('恢复那一版 = 回到导入前;且恢复本身也可撤销(撤销栈)', () => {
+        // 通过版本记录回退(这是 👤 定的统一入口)
+        run('restoreBankVersion("刑法", 0)');
         assert.strictEqual(run(`questionBanks['刑法'].length`), 1);
         assert.strictEqual(run(`questionBanks['刑法'][0].content`), 'OLD');
-        assert.strictEqual(run('errorQuestions.length'), 0);
-        assert.strictEqual(run('favoriteQuestions.length'), 0);
-        assert.strictEqual(JSON.parse(store.get('importBatches')).length, 0);
+        // 恢复会先自动存一版「恢复前自动存」,所以还能再退回来
+        const versions = JSON.parse(run(`JSON.stringify(loadBankVersions()['刑法'] || [])`));
+        assert.ok(versions.some(v => v.action === '恢复前自动存'), '恢复前应自动存一版(恢复可逆)');
+        // 会话内撤销栈:一次撤销就回到导入后(3 题)的状态
+        assert.strictEqual(run('editorUndo()'), true);
+        assert.strictEqual(run(`questionBanks['刑法'].length`), 3, '撤销栈应能一步退回恢复之前');
+        assert.strictEqual(run('editorRedo()'), true);
+        assert.strictEqual(run(`questionBanks['刑法'].length`), 1, '重做回到恢复后的状态');
     });
 
-    test('手改过的题指纹已变,撤销自动跳过不误删', async () => {
-        const app = await loadApp({ confirmResult: true });
-        const r = app.run;
-        r(`questionBanks = { '刑法': [${JSON.stringify(mkQ('NEW1'))}] }; currentBankName = '刑法'; questionBank = questionBanks['刑法'];`);
-        r(`recordImportBatch({ time: 't', source: '测试', bank: '刑法', fingerprints: [questionDedupKey(questionBanks['刑法'][0])], imported: 1 });`);
-        r(`questionBanks['刑法'][0].content = 'NEW1-改';`); // 用户手改 → 指纹变化
-        r('undoLastImport()');
-        assert.strictEqual(r(`questionBanks['刑法'].length`), 1); // 未被误删
-        assert.strictEqual(r(`questionBanks['刑法'][0].content`), 'NEW1-改');
-        assert.strictEqual(JSON.parse(app.store.get('importBatches')).length, 0); // 批次作废
-    });
-
-    test('取消确认:批次保留,可再次撤销', async () => {
-        const app = await loadApp({ confirmResult: false });
-        const r = app.run;
-        r(`questionBanks = { '刑法': [${JSON.stringify(mkQ('NEW1'))}] }; currentBankName = '刑法'; questionBank = questionBanks['刑法'];`);
-        r(`recordImportBatch({ time: 't', source: '测试', bank: '刑法', fingerprints: [questionDedupKey(questionBanks['刑法'][0])], imported: 1 });`);
-        r('undoLastImport()'); // confirm=false → 取消
-        assert.strictEqual(r(`questionBanks['刑法'].length`), 1);
-        assert.strictEqual(JSON.parse(app.store.get('importBatches')).length, 1); // 批次仍在
+    test('导入后手改过的题:版本记录照样能整库回退(不再有"半撤"这种状态)', () => {
+        // ⚠️ 版本存在 localStorage 里(loadBankVersions 读的是它),不是 state 字段 —— 得直接清 store
+        store.set('bankVersions', '{}');
+        run(`questionBanks = { '刑法': [${JSON.stringify(mkQ('NEW1'))}] }; currentBankName = '刑法'; questionBank = questionBanks['刑法'];`);
+        run(`pushBankVersion('刑法', '导入前', [], { source: '测试' })`);   // 导入前是空库
+        run(`questionBanks['刑法'][0].content = 'NEW1-改'`);               // 用户手改
+        run('restoreBankVersion("刑法", 0)');
+        assert.strictEqual(run(`questionBanks['刑法'].length`), 0,
+            '版本回退是整库回到那一刻 —— 手改也一并回退(这是它比"按指纹撤销"确定的地方)');
     });
 });
 
@@ -235,5 +240,107 @@ describe('删库后回收站立刻更新(👤 反馈的 bug)', () => {
         // ④ 顺带:配色不残留(库没了,按库名存的颜色也该清掉)
         assert.strictEqual(run(`Object.prototype.hasOwnProperty.call(bankColors, '要删的库')`), false,
             '删库应一并清掉它的卡片配色');
+    });
+});
+
+// ==================== 编辑级撤销栈(👤 2026-09-13:会话内、内存、深度 50)====================
+describe('编辑级撤销栈', () => {
+    let run, elements, store;
+    before(async () => {
+        ({ run, elements, store } = await loadApp({ confirmResult: true }));
+        store.set('bankVersions', '{}');
+    });
+
+    const fresh = (extra = '') => run(`questionBanks = { 'T': [${JSON.stringify(mkQ('甲'))}, ${JSON.stringify(mkQ('乙'))}] };
+        currentBankName = 'T'; questionBank = questionBanks['T']; editBankName = 'T'; editIndex = 0;
+        undoStack = []; redoStack = []; ${extra}`);
+
+    test('改一道题:撤销回到旧内容,重做回到新内容(且不碰别的题)', () => {
+        fresh();
+        elements['editor-options']._setQueryAll([
+            { dataset: { letter: 'A' }, value: '甲', disabled: false },
+            { dataset: { letter: 'B' }, value: '乙', disabled: false },
+        ]);
+        run(`editorStem.value = '甲(改过)'; editorType.value = '单选'; editorAnswer.value = 'A'; editorSaveCurrent(true)`);
+        assert.strictEqual(run(`questionBanks['T'][0].content`), '甲(改过)');
+        assert.strictEqual(run('canUndo()'), true);
+        assert.ok(/改第 1 题/.test(run('undoLabel()')), '标签要写清撤的是什么,实际:' + run('undoLabel()'));
+        assert.strictEqual(run('editorUndo()'), true);
+        assert.strictEqual(run(`questionBanks['T'][0].content`), '甲', '撤销应回到旧内容');
+        assert.strictEqual(run(`questionBanks['T'][1].content`), '乙', '别的题不该被动');
+        assert.strictEqual(run('editorRedo()'), true);
+        assert.strictEqual(run(`questionBanks['T'][0].content`), '甲(改过)', '重做回到新内容');
+    });
+
+    test('原样保存不留步(不污染撤销栈)', () => {
+        fresh();
+        elements['editor-options']._setQueryAll([
+            { dataset: { letter: 'A' }, value: '甲', disabled: false },
+            { dataset: { letter: 'B' }, value: '乙', disabled: false },
+        ]);
+        run(`editorStem.value = '甲'; editorType.value = '单选'; editorAnswer.value = 'A'; editorSaveCurrent(true)`);
+        assert.strictEqual(run('canUndo()'), false, '内容没变就不该记一步');
+    });
+
+    test('删题:撤销按原位放回;批量删是一次一步', () => {
+        fresh();
+        // 单题删(走批量删除的入口,只选中一道)
+        run(`editorSelected.length = 0; editorSelected.push(questionBanks['T'][1]); editorBulkDelete()`);
+        assert.strictEqual(run(`questionBanks['T'].length`), 1);
+        assert.strictEqual(run('editorUndo()'), true);
+        assert.deepStrictEqual(JSON.parse(run(`JSON.stringify(questionBanks['T'].map(q => q.content))`)), ['甲', '乙'],
+            '撤销要把题放回**原来的位置**');
+        // 批量删两道(先补一道)
+        run(`questionBanks['T'].push(${JSON.stringify(mkQ('丙'))});`);
+        run(`editorSelected.length = 0; editorSelected.push(questionBanks['T'][0], questionBanks['T'][1], questionBanks['T'][2]); editorBulkDelete()`);
+        assert.strictEqual(run(`questionBanks['T'].length`), 0);
+        assert.strictEqual(run('editorUndo()'), true);
+        assert.strictEqual(run(`questionBanks['T'].length`), 3, '一次批量删除 = 一步撤销全回来');
+    });
+
+    test('新增题目:撤销移除、重做加回', () => {
+        fresh();
+        run('editorAddQuestion()');
+        assert.strictEqual(run(`questionBanks['T'].length`), 3);
+        assert.strictEqual(run('editorUndo()'), true);
+        assert.strictEqual(run(`questionBanks['T'].length`), 2);
+        assert.strictEqual(run('editorRedo()'), true);
+        assert.strictEqual(run(`questionBanks['T'].length`), 3);
+    });
+
+    test('去重:一步撤销把删掉的重复题全拿回来', () => {
+        run(`questionBanks = { 'D': [${JSON.stringify(mkQ('重复'))}, ${JSON.stringify(mkQ('重复'))}, ${JSON.stringify(mkQ('独一'))}] };
+            currentBankName = 'D'; questionBank = questionBanks['D']; editBankName = 'D'; undoStack = []; redoStack = [];`);
+        run('dedupBank("D")');
+        assert.strictEqual(run(`questionBanks['D'].length`), 2);
+        assert.strictEqual(run('editorUndo()'), true);
+        assert.strictEqual(run(`questionBanks['D'].length`), 3, '去重也应能整体撤销');
+        assert.strictEqual(run('editorRedo()'), true);
+        assert.strictEqual(run(`questionBanks['D'].length`), 2);
+    });
+
+    test('栈语义:深度上限 50、新动作清空重做、库级操作清栈', () => {
+        fresh();
+        // 深度:塞 60 条
+        run(`for (let i = 0; i < 60; i++) pushUndo({ label: 'x' + i, undo: () => {}, redo: () => {} })`);
+        assert.strictEqual(run('undoStack.length'), 50, '超过上限要丢最旧的');
+        // 新动作清空 redoStack
+        run(`undoStack = []; redoStack = []; pushUndo({ label: 'a', undo: () => {}, redo: () => {} }); editorUndo();
+             pushUndo({ label: 'b', undo: () => {}, redo: () => {} })`);
+        assert.strictEqual(run('canRedo()'), false, '记了新动作之后就不该还能重做');
+        // 库级操作清栈(条目会引用已不存在的库)
+        run(`undoStack = []; redoStack = []; pushUndo({ label: 'z', undo: () => {}, redo: () => {} });`);
+        run('clearUndo()');
+        assert.strictEqual(run('canUndo()'), false);
+        assert.strictEqual(run('canRedo()'), false);
+    });
+
+    test('撤销栈不落盘(刷新即清,跨会话回退靠版本记录)', () => {
+        fresh();
+        run(`pushUndo({ label: 'x', undo: () => {}, redo: () => {} })`);
+        assert.strictEqual(run('canUndo()'), true);
+        // 任何 localStorage 键里都不该出现撤销栈
+        const keys = [...store.keys()];
+        for (const k of ['undoStack', 'redoStack']) assert.ok(!keys.includes(k), `${k} 不该落盘`);
     });
 });

@@ -154,6 +154,8 @@ export function loadImportBatches() {
     }
 }
 
+// ⚠️ 自 2026-09-13 起，批次记录**只作展示**（题库页的「上次导入:…」），不再有"批次级撤销"。
+// 仍然保留容量上限，避免它无限长下去。
 export function saveImportBatches(batches) {
     try {
         while (batches.length > 5) batches.shift();
@@ -309,7 +311,7 @@ export function saveBankVersions(obj) {
     } catch (e) { /* 超容量:版本不入盘 */ }
 }
 
-// 存版:每库保留 3 版;全站超 10 版时按时间 LRU 淘汰最旧。
+// 存版:每库保留 5 版;全站超 20 版时按时间 LRU 淘汰最旧(👤 2026-09-13 扩容)。
 // ⚠️ 调用纪律(2026-09-11 理顺):
 //   ① **只在真的会改动题目的操作之前存**(去重空点、库为空这类"本来就没得改"的情况不要存,
 //      否则每库只有 3 个槽,几下就被无意义的安全网占满);
@@ -343,13 +345,20 @@ export function deleteBankVersion(name, index) {
 }
 
 
-export function pushBankVersion(name, action, questions) {
+// 槽位(👤 2026-09-13 扩容):导入也进版本记录之后,3 个槽会被"导入前/去重前"几下占满,
+// 于是把"去重前/覆盖前"这些真正的安全网挤掉。每库 3→5、全站 10→20。
+export const VERSIONS_PER_BANK = 5;
+export const VERSIONS_TOTAL = 20;
+
+export function pushBankVersion(name, action, questions, meta) {
     const all = loadBankVersions();
     const time = new Date().toISOString();
     const entry = { time, action, questions: JSON.parse(JSON.stringify(questions || [])) };
+    // meta:{ source } —— 版本列表里显示"这是哪次导入",否则一列"导入前 09-13 15:02"认不出谁是谁
+    if (meta && meta.source) entry.source = String(meta.source).slice(0, 40);
     const list = all[name] || [];
     list.push(entry);
-    while (list.length > 3) list.shift();
+    while (list.length > VERSIONS_PER_BANK) list.shift();
     all[name] = list;
     // 全站 LRU(排除刚存的那条)
     const flat = [];
@@ -357,7 +366,7 @@ export function pushBankVersion(name, action, questions) {
         versions.forEach(v => { if (!(v === entry && bank === name)) flat.push([bank, v]); });
     });
     flat.sort((a, b) => (b[1].time || '').localeCompare(a[1].time || ''));
-    let overflow = flat.length + 1 - 10;
+    let overflow = flat.length + 1 - VERSIONS_TOTAL;
     if (overflow > 0) {
         for (const [bank, v] of flat) {
             if (overflow <= 0) break;

@@ -277,9 +277,12 @@ test('确认导入:分开建库、逐库记账(撤销有据可依)', () => {
     // 直接读落盘(localStorage 里就是 importBatches),免得再往测试钩子里挂一个 storage 函数
     const batches = JSON.parse(store.get('importBatches') || '[]').slice(beforeCount).map(b => b.bank);
     assert.deepStrictEqual(batches, ['甲库', '乙库'], '逐库记账:撤销才撤得掉');
-    run('undoLastImport()');
-    assert.strictEqual(run(`questionBanks['乙库'].length`), 0);
-    assert.strictEqual(run(`questionBanks['甲库'].length`), 1, '别的库不许被牵连');
+    // 撤销:👤 2026-09-13 起统一走"撤销栈一步"(会话内)与版本记录(跨会话),不再有批次级撤销
+    assert.strictEqual(run('editorUndo()'), true, '一次导入 = 一步撤销');
+    assert.strictEqual(run(`questionBanks['乙库'].length`), 0, '乙库回到导入前(导入前它是空的)');
+    assert.strictEqual(run(`questionBanks['甲库'].length`), 0, '甲库同样回到导入前(一次导入涉及的库一起回退)');
+    assert.strictEqual(run('editorRedo()'), true);
+    assert.strictEqual(run(`questionBanks['乙库'].length`), 2, '重做恢复导入了的 2 题');
 });
 
 test('改成"全部并入一个题库"时,回到旧的单库导入行为', () => {
