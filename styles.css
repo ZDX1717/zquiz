@@ -1565,13 +1565,18 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
    sticky 本身就是"已定位"元素,绝对定位的子元素以它为包含块,所以面板挂在这里是对的;
    ⚠️ 面板**不能**放进 .editor-toolbar 里 —— 手机档工具行要横向滚动(overflow-x:auto),
       滚动容器会把绝对定位的面板裁掉。 */
+/* 工具条吸顶(👤 2026-09-13:要在滚动区**最顶上**贴死,上面不许有缝)。
+   缝的来源:滚动容器有上内边距,`top:0` 只是贴到内容区顶部,那 12px 的 padding 会把滚过去的列表透出来。
+   做法:① `top` 取负的上内边距 → 正好贴到滚动区上边缘;② 负的横向边距 + 同值自身内边距,
+   让底色**铺满整条**(左右也不露缝),同时内容仍与下方列表左对齐。 */
 .editor-toolbar-wrap {
     position: sticky;
-    top: 0;
+    top: calc(-1 * var(--editor-pad-top, 0px));
     z-index: 20;                /* 压在列表之上、筛选面板(60)之下 */
-    margin: -4px 0 6px;         /* 负上边距:贴住滚动区顶部时不留缝 */
-    padding: 4px 0 6px;
+    margin: calc(-1 * var(--editor-pad-top, 0px)) calc(-1 * var(--editor-pad-x, 0px)) 6px;
+    padding: var(--editor-pad-top, 0px) var(--editor-pad-x, 0px) 8px;
     background: var(--c-surface);
+    border-bottom: 1px solid var(--c-border-light);   /* 吸顶后与列表有一条分界,内容从下面滑过去 */
 }
 .editor-toolbar {
     display: flex;
@@ -3513,12 +3518,16 @@ html.is-standalone .install-hint { display: none !important; }
 /* 标签页切换:题目页 = 题号列表 + 当前题;设置页 = 整库设置 */
 /* 主体:标签页决定内部怎么排(外层不再自己分栏),同时它是**唯一滚动区** */
 .editor-body {
+    /* 内边距提成变量:吸顶的工具条要靠它做**负向抵消**(见 .editor-toolbar-wrap),
+       两边必须同源 —— 各写各的数字,缝就回来了(👤 反馈过"悬浮时上面有个缝")。 */
+    --editor-pad-x: 16px;
+    --editor-pad-top: 12px;
     display: block;
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 12px 16px 16px;
+    padding: var(--editor-pad-top) var(--editor-pad-x) 16px;
 }
 .editor-body > .editor-panel { display: none; }
 .editor-body[data-tab="question"] > .editor-list-panel,
@@ -3708,7 +3717,8 @@ html.is-standalone .install-hint { display: none !important; }
         border-radius: 0;
     }
     .editor-body {
-        padding: 12px 12px 16px;
+        --editor-pad-x: 12px;
+        padding: var(--editor-pad-top) var(--editor-pad-x) 16px;
     }
     /* 手机档:工具行**只允许一行**(👤 要求:「🗑 删除」必须和筛选/去重同一行)——
        挤不下时横向滑动,而不是把批量栏甩到第二行。外边距收紧,把宽度让给按钮。 */

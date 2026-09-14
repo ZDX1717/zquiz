@@ -684,6 +684,30 @@ test('题库设置:按作用对象分块,「删除题库」独占最底部的危
         '手机档下拉应 44px 且字号 ≥16px(防 iOS 聚焦缩放)');
 });
 
+test('工具条吸顶:负向抵消滚动容器的内边距(👤 反馈:悬浮时上面有个缝)', () => {
+    // 缝的来源:滚动容器有上内边距,`top:0` 只贴到内容区顶部,那 12px 会把滚过去的列表透出来。
+    // 修法 = 负 top + 负横向边距 + 同值自身内边距(底色铺满整条),且内边距必须**同源**(变量)。
+    const bodyRules = [...cssNoComments.matchAll(/\.editor-body\s*\{([^}]*)\}/g)].map(m => m[1]);
+    const body = bodyRules.find(r => /--editor-pad-top/.test(r));
+    assert.ok(body, '滚动容器应把内边距提成变量(--editor-pad-top / --editor-pad-x)');
+    assert.ok(/--editor-pad-x\s*:/.test(body), '横向内边距也要提成变量(否则左右也露缝)');
+    assert.ok(/padding\s*:\s*var\(--editor-pad-top\)\s+var\(--editor-pad-x\)/.test(body),
+        '滚动容器的 padding 必须引用这两个变量');
+
+    const wrap = cssNoComments.match(/\n\.editor-toolbar-wrap\s*\{([^}]*)\}/)[1];
+    assert.ok(/position\s*:\s*sticky/.test(wrap), '工具条外层应吸顶');
+    assert.ok(/top\s*:\s*calc\(-1 \* var\(--editor-pad-top/.test(wrap),
+        'top 要负向抵消上内边距 —— 否则滚动区顶部露出一条缝(👤 反馈)');
+    assert.ok(/margin\s*:[^;]*calc\(-1 \* var\(--editor-pad-top[^;]*calc\(-1 \* var\(--editor-pad-x/.test(wrap),
+        'margin 要同时负向抵消上下左右(用变量),否则左右也露缝');
+    assert.ok(/background\s*:/.test(wrap), '吸顶条要有底色,否则列表从它下面透出来');
+    assert.ok(/z-index\s*:/.test(wrap), '吸顶条要压在列表之上');
+
+    // 手机档的横向内边距必须同步进变量(两处各写各的数字,缝就回来了)
+    assert.ok(/\.editor-body\s*\{\s*--editor-pad-x\s*:\s*12px/.test(cssNoComments),
+        '手机档的横向内边距也要写进变量');
+});
+
 test('编辑器:题目页的顺序 = 工具行 → 筛选面板 → 列表 → 批量栏(👤 2026-09-12 重构)', () => {
     const modal = html.slice(html.indexOf('id="edit-bank-modal"'), html.indexOf('id="question-card-modal"'));
     const order = ['editor-toolbar', 'editor-filter-panel', 'editor-list-block', 'editor-empty']
