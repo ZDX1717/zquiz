@@ -259,7 +259,7 @@ function showUnreadableFileNotice(isPdf) {
         '<b>📄 老版 .doc 不能直接读，两个办法：</b>' +
         '<p class="file-notice-hint">① <b>转格式（推荐）</b>：用 Word / WPS 打开 → 另存为 <b>.docx</b> → 回来重新选择文件，文字会自动读进输入框。</p>' +
         '<p class="file-notice-hint">② <b>复制文字</b>：直接在 .doc 里选中文字复制，粘贴到输入框（任何格式通用）。</p>' +
-        '<p class="file-notice-hint">提示：转成 .docx 导入后若格式仍乱，预览页有「🤖 AI 格式整理(不改内容)」一键清理；连题目都认不出时，下方「AI 格式整理」也能把原文理顺。</p>',
+        '<p class="file-notice-hint">提示：转成 .docx 导入后若格式仍乱，预览页有「🤖 AI 格式整理(不改内容)」一键清理；连题目都认不出时，下面那句「解析不出来？」里的 AI 整理路径也能把原文理顺。</p>',
         'warning'
     );
 }
@@ -277,7 +277,7 @@ export async function copyOfficialPrompt(forcePromptOnly = false) {
         copyPromptBtn.textContent = material
             ? `✓ 已复制提示词+题目(${material.length} 字)`
             : '✓ 已复制提示词';
-        setTimeout(() => { copyPromptBtn.textContent = '📋 一键复制提示词+题目'; }, 2500);
+        setTimeout(() => { copyPromptBtn.textContent = '📋 复制提示词和题目'; }, 2500);
         showImportStatus(material
             ? '已复制提示词+题目原文:整段粘贴给豆包 / Kimi / DeepSeek,把整理结果粘回这里'
             : '提示词已复制:打开豆包 / Kimi / DeepSeek,附上文件后粘贴发送,把 AI 回复粘回输入框', 'success');
@@ -319,12 +319,10 @@ export function parsePastedText() {
         ? sectionsData.flatMap(sec => sec.questions.map(q => ({ q, bank: sec.name })))
         : parseQuestionsText(text);
     if (importedQuestions.length === 0) {
-        // 🚨 解析不出来 = 提示 + **把救援区摊在眼前**(👤 2026-09-13 对齐生成的流程)。
-        // 以前只写一句"试试上方「复制官方提示词」用 AI 整理":那段是默认**收起**的 <details>,
-        // 屏幕上根本看不到,而且"复制官方提示词"这个名字在界面上也不存在(实际按钮叫
-        // 「① 📋 复制提示词+题目」/「🤖 AI 格式整理并填入输入框」)。
-        // 规则:① 状态行说清下一步 ② 展开救援区 ③ 滚到它 —— 三件事一起做,少一件用户就找不到路。
-        showImportStatus('没解析出有效题目 —— 已为你展开下方「AI 格式整理」:点「🤖 AI 格式整理并填入输入框」让 AI 理顺原文(不改内容),或点「① 📋 复制提示词+题目」自己发给聊天 AI', 'error');
+        // 🚨 解析不出来 = 一句话提示 + **把救援区摊在眼前**(👤 2026-09-13)。
+        // ⚠️ 提示**不要**再把救援区里的按钮逐个念一遍:救援区就在下面、已经自动展开,
+        //    状态行再复述一遍只会变成一堵字(👤:"太啰嗦、重点不清楚")。状态行只负责"出了什么事 + 往哪走"。
+        showImportStatus('没认出题目 —— 用下面的「AI 格式整理」理顺原文,再点解析', 'error');
         openRescuePanel();
         return;
     }
@@ -486,6 +484,12 @@ export function updateAiSettingsBadge() {
     const ok = aiConfigReady(cfg) && isAiTested(cfg);
     aiSettingsBtn.textContent = ok ? '⚙ AI 已连接 ✓' : '⚙ AI 设置';
     aiSettingsBtn.classList.toggle('ai-connected', ok);
+    // 救援区只铺一条路(👤 2026-09-13):配好 Key 的人看见"一键整理",没配的人看见"复制提示词"。
+    // ⚠️ 判据用 aiConfigReady(**配没配好 Key**),不是开头的 ok(那是"配好且测通过") ——
+    //    一键整理能不能跑起来只取决于配没配,与测没测无关。
+    if (aiRescuePanel && aiRescuePanel.classList) {
+        aiRescuePanel.classList.toggle('auto-ready', aiConfigReady(cfg));
+    }
 }
 
 // ==================== 预览 AI 兜底(分块/进度/取消 → 复用预览确认管道) ====================
@@ -708,7 +712,11 @@ export async function rescueAiOrganize() {
         const parsed = parseQuestionsText(text);
         recordAiUsage({ trigger: 'rescue-organize', chunks, aiQuestions: parsed.length });
         if (parsed.length === 0) {
-            showImportStatus('AI 没整理出题目：改用左边 A 路线（复制提示词发给聊天 AI 人工兜底）', 'error');
+            // 一键整理没结果 → 只能走手动那条路。⚠️ 配了 Key 时手动那条整块是**隐藏**的,
+            // 这里必须把 `.auto-ready` 摘掉,按钮才会出现 —— 否则提示让用户"去点复制提示词",
+            // 而屏幕上根本没有那个按钮(文案与界面不一致的经典坑)。
+            showImportStatus('AI 没整理出题目 —— 已切到手动方式:点「📋 复制提示词和题目」发给聊天 AI 整理', 'error');
+            if (aiRescuePanel && aiRescuePanel.classList) aiRescuePanel.classList.remove('auto-ready');
             return;
         }
         // 结果替换输入框内容,标记 AI 生成;点解析后逐题带 🤖

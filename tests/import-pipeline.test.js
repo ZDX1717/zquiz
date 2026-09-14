@@ -343,6 +343,27 @@ test('解析不出题目 → 提示 + 自动展开「AI 格式整理」救援区
     assert.ok(!/复制官方提示词/.test(String(st.textContent)),
         '不许再引用界面上不存在的名字「复制官方提示词」');
     assert.ok(/AI 格式整理/.test(String(st.textContent)), '提示要点名救援区里真正能点的按钮');
+    // 👤 2026-09-13:状态行**只报"出了什么事 + 往哪走"**,不许再把救援区的按钮逐个念一遍
+    // (救援区就在下面且自动展开,复述一遍只会变成一堵字)
+    assert.ok(String(st.textContent).length <= 32,
+        '失败提示要短(≤32 字),实际 ' + String(st.textContent).length + ' 字:' + st.textContent);
+});
+
+test('救援区只铺一条路:没配 Key 看见"复制提示词",配了 Key 看见"一键整理"(👤 2026-09-13)', () => {
+    // ① 没配 Key(默认)→ 手动那条可见、自动那条隐藏
+    store.set('aiConfig', JSON.stringify({ providerId: 'zhipu', apiKey: '', baseUrl: '', model: '' }));
+    run('updateAiSettingsBadge()');
+    assert.strictEqual(elements['ai-rescue']._classes.has('auto-ready'), false, '没配 Key 不该打 auto-ready');
+    // ② 配好 Key → 反过来
+    store.set('aiConfig', JSON.stringify({ providerId: 'zhipu', apiKey: 'k-123', baseUrl: '', model: '' }));
+    run('updateAiSettingsBadge()');
+    assert.strictEqual(elements['ai-rescue']._classes.has('auto-ready'), true, '配好 Key 应打 auto-ready');
+    // ③ 两条路各自标了 data-route(CSS 的切换规则挂在它上面;样式断言在 dom-structure.test.js)
+    const sec = HTML_SRC.slice(HTML_SRC.indexOf('id="ai-rescue"'), HTML_SRC.indexOf('</details>', HTML_SRC.indexOf('id="ai-rescue"')));
+    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'),
+        '两条路都要标 data-route,否则 CSS 的切换规则挂不上');
+    // ④ 不许再有两栏并列的老写法(1fr 1fr 会一次铺两条路,正是"重点不清楚"的来源)
+    assert.ok(!sec.includes('<h4>'), '救援区不该再有「A · 手动整理…」这类标题墙');
 });
 
 test('提示文案里引用的按钮名必须真实存在于界面(文案与界面不许各说各话)', () => {
@@ -352,9 +373,9 @@ test('提示文案里引用的按钮名必须真实存在于界面(文案与界�
     run('parsePastedText()');
     const msg = String(elements['import-status'].textContent);
     const names = quoted(msg);
-    assert.ok(names.length >= 2, '提示里应点名救援区的按钮,实际:' + msg);
+    assert.ok(names.length >= 1, '提示里应点名救援区那块,实际:' + msg);
     for (const n of names) {
-        assert.ok(HTML_SRC.includes(n), `提示引用了界面上不存在的「${n}」—— 文案必须用真按钮名`);
+        assert.ok(HTML_SRC.includes(n), `提示引用了界面上不存在的「${n}」—— 文案必须用真名字`);
     }
     // ② 老版 .doc 提示里引用的预览页按钮
     run(`handleFileSelect({ target: { files: [{ name: '卷子.doc' }] } })`);

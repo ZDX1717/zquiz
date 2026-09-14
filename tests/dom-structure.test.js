@@ -297,6 +297,33 @@ test('导入输入框的提示词:两条路都要说清(粘贴 / 选文件)(👤
     assert.ok(/读进本框|填入/.test(ph), '要说明文件的文字会进输入框');
 });
 
+test('救援区:只铺一条路 + 文案有预算(👤 2026-09-13 报"太啰嗦、重点不清楚")', () => {
+    const start = html.indexOf('id="ai-rescue"');
+    const sec = html.slice(start, html.indexOf('</details>', start));
+    // ① 文案预算:整块可见文字 ≤190 字(改之前 272 字、占手机 57% 屏,👤 说读完仍不知道点哪个)
+    const text = sec.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, '');
+    assert.ok(text.length <= 190, `救援区文案要短(≤190 字),实际 ${text.length} 字 —— 别再往里加解释`);
+    assert.ok(!/A ·|B ·/.test(sec), '不许再有「A · 手动整理…」这种标题墙(它占了最多字数)');
+    // ② 两条路:一次只显示一条,由 data-route + #ai-rescue.auto-ready 切换
+    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'), '两条路都要标 data-route');
+    assert.ok(/\.rescue-grid \{[^}]*grid-template-columns: 1fr;/.test(cssNoComments),
+        '.rescue-grid 必须单列 —— 回到 1fr 1fr 就是"两条路一起铺",重点又没了');
+    assert.ok(/#ai-rescue \.rescue-col\[data-route="auto"\] \{ display: none; \}/.test(cssNoComments),
+        '默认(没配 Key)应隐藏自动那条');
+    assert.ok(/#ai-rescue\.auto-ready \.rescue-col\[data-route="manual"\] \{ display: none; \}/.test(cssNoComments),
+        '配了 Key 应隐藏手动那条');
+    // ③ 唯一的主操作:整行大按钮(颜色仍 secondary —— 首页只许一个主色实心键)
+    const main = cssNoComments.match(/\n\.rescue-main \{([^}]*)\}/);
+    assert.ok(main && /width\s*:\s*100%/.test(main[1]), '主操作按钮应整行');
+    const mobileBlocks = [...cssNoComments.matchAll(/@media \(max-width: 768px\) \{([\s\S]*?)\n\}/g)].map(m => m[1]);
+    assert.ok(mobileBlocks.some(b => /\.rescue-main \{ min-height: 48px; \}/.test(b)),
+        '手机档主操作按钮应 48px(拇指目标,与首页主键同档)');
+    for (const id of ['copy-prompt-btn', 'rescue-ai-btn']) {
+        assert.ok(new RegExp(`id="${id}" class="action-btn secondary rescue-main"`).test(html),
+            `${id} 应是 secondary + rescue-main(不许染主色)`);
+    }
+});
+
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {
     const cssText = String(cssNoComments);
     for (const sel of ['#home-section > .operation-card', '#banks-section > .banks-list']) {

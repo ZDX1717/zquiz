@@ -2327,21 +2327,34 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     color: var(--c-text);
     font-size: 0.95em;
 }
+/* 救援区(👤 2026-09-13 二改:只铺一条路)。
+   以前 A/B 两栏并列、各挂一句"——只改格式,不动内容",272 字占手机 57% 屏,读完仍不知道点哪个。
+   现在按配没配 Key 只显示**一条**路(纯 CSS 切换 `#ai-rescue.auto-ready`,类由 bank.js 打)。 */
 .rescue-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;      /* 一次只铺一条路:不要再回到 1fr 1fr */
     gap: 12px;
     margin-top: 8px;
 }
-@media (max-width: 600px) {
-    .rescue-grid { grid-template-columns: 1fr; }
+#ai-rescue .rescue-col[data-route="auto"] { display: none; }
+#ai-rescue.auto-ready .rescue-col[data-route="auto"] { display: block; }
+#ai-rescue.auto-ready .rescue-col[data-route="manual"] { display: none; }
+/* 唯一的主操作:整行 + 手机拇指目标(颜色仍走 secondary —— 首页只许一个主色实心键) */
+.rescue-main { width: 100%; min-height: 44px; }
+@media (max-width: 768px) {
+    .rescue-main { min-height: 48px; }
+}
+/* 副路线的一句话提示(不占地方,只在手动这条路上出现) */
+.rescue-alt-line {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: var(--c-text-faint);
 }
 .rescue-col {
     border: 1px solid var(--c-border-hairline);
     border-radius: 6px;
     padding: 8px;
 }
-.rescue-col h4 { margin: 0 0 8px; font-size: 0.9em; color: var(--c-text); }
 .rescue-col .prompt-toggle { margin-top: 8px; }
 .rescue-hint {
     font-size: 0.82em;
