@@ -16,12 +16,34 @@ export function applyTheme() {
     // 手机状态栏颜色跟随
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', theme === 'dark' ? '#121417' : '#f5f7fa');
-    // 同步三档开关高亮
-    if (typeof document.querySelectorAll === 'function') {
-        document.querySelectorAll('.theme-opt').forEach(btn => {
-            btn.classList.toggle('active', btn.dataset.themeOpt === pref);
-        });
+    // 同步那个"一键主题键":三枚图标靠 data-theme-pref 切(CSS 负责显示哪一枚),
+    // 顺带把可读文案写进 title / aria-label —— 图标本身说不清"现在是哪一档"。
+    syncThemeToggle(pref);
+}
+
+// 档位顺序 = 点一下换一档的顺序(自动 → 亮 → 暗 → 自动)
+export const THEME_CYCLE = ['auto', 'light', 'dark'];
+const THEME_LABEL = { auto: '自动', light: '亮', dark: '暗' };
+
+function syncThemeToggle(pref) {
+    if (typeof document === 'undefined' || !document.querySelector) return;
+    const btn = document.querySelector('#theme-toggle-btn');
+    if (!btn) return;
+    const cur = THEME_CYCLE.includes(pref) ? pref : 'auto';
+    if (btn.dataset) btn.dataset.themePref = cur;
+    const text = `主题：${THEME_LABEL[cur]}（点击切换）`;
+    if (btn.setAttribute) {
+        btn.setAttribute('title', text);
+        btn.setAttribute('aria-label', `主题：${THEME_LABEL[cur]}，点击切换`);
     }
+}
+
+// 点一下换一档(👤 2026-09-14:三格分段控件收成一个简约按钮)
+export function cycleThemeSetting() {
+    const cur = loadThemeSetting();
+    const i = THEME_CYCLE.indexOf(THEME_CYCLE.includes(cur) ? cur : 'auto');
+    setThemeSetting(THEME_CYCLE[(i + 1) % THEME_CYCLE.length]);
+    return loadThemeSetting();
 }
 
 // 用户切换设置(自动/亮/暗),立即生效并持久化

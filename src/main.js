@@ -1,7 +1,7 @@
 import { buildAiNotes } from './ai.js';
 import { state } from './state.js';
 import { pushUndo, canUndo, canRedo, undoLabel, redoLabel, clearUndo, assignExact, cloneQuestion } from './undo.js';
-import { applyTheme, initTheme, setThemeSetting } from './theme.js';
+import { applyTheme, initTheme, cycleThemeSetting, setThemeSetting } from './theme.js';
 import { buildCardCells, finalizeQuestion, formatQuestionsForExport, normalizeAnswerString, parseQuestionsText, questionDedupKey, shuffleArray, splitInlineOptions, splitBankSections, bankSectionHeader } from './parser.js';
 import { deleteBankVersion, loadAutoNextSetting, loadBankVersions, loadCollapsedBanks, loadFromLocalStorage, loadMasterySetting, pushBankVersion, saveAutoNextSetting, saveCollapsedBanks, saveMasterySetting, saveToLocalStorage, recordImportBatch } from './storage.js';
 import { downloadFile, hideModal, showModal } from './dom.js';
@@ -173,8 +173,8 @@ const bankDedupBtn = document.getElementById('editor-dedup-btn');   // 去重已
 const bankExportBtn = document.getElementById('bank-export-btn');
 const bankDeleteBtn = document.getElementById('bank-delete-btn');
 
-// 首页:主题开关(hero 的开始刷题/导入题库按钮已移除,导航职责归底部 3 tab)
-const themeSwitch = document.getElementById('theme-switch');
+// 首页:主题键(hero 的开始刷题/导入题库按钮已移除,导航职责归底部 3 tab)
+const themeToggleBtn = document.getElementById('theme-toggle-btn');
 
 const SECTIONS = ['home', 'quiz', 'banks'];
 
@@ -493,13 +493,12 @@ function setupEventListeners() {
     prevQuestionBtn.addEventListener('click', prevQuestion);
     reviewOnlyWrong.addEventListener('change', renderAnswerReview);
 
-    // 主题三档开关(事件委托)
-    themeSwitch.addEventListener('click', (e) => {
-        const opt = e.target && e.target.closest ? e.target.closest('.theme-opt') : null;
-        if (opt) setThemeSetting(opt.dataset.themeOpt);
-    });
+    // 主题键:点一下换一档
+    // 主题键:点一下换一档(自动 → 亮 → 暗 → 自动)。三格分段控件已收成一个简约按钮(👤 2026-09-14),
+    // 换档逻辑在 theme.js 的 cycleThemeSetting 里,这里只管接线。
+    themeToggleBtn.addEventListener('click', () => cycleThemeSetting());
 
-    // 主题三档开关的绑定在 initTheme/theme.js 内完成
+    // 初始档位由 initTheme/theme.js 写进 data-theme-pref
 }
 
 
@@ -614,6 +613,7 @@ if (typeof window === 'undefined') {
         backToQuizOptions,
         applyTheme,
         setThemeSetting,
+        cycleThemeSetting,
         navigate,
         buildCardCells,
         openAnswerCard,

@@ -485,6 +485,14 @@ test('暗色模式:三档切换打 data-theme、持久化、auto 跟随系统', 
     // 回 auto → 跟随系统(暗)
     run(`setThemeSetting('auto')`);
     assert.strictEqual(run(`document.documentElement.dataset.theme`), 'dark');
+    // 👤 2026-09-14:三格分段控件收成**一个**简约键,点一下换一档(自动 → 亮 → 暗 → 自动)
+    assert.strictEqual(run(`cycleThemeSetting()`), 'light', '自动 → 亮');
+    assert.strictEqual(run(`document.documentElement.dataset.theme`), 'light');
+    assert.strictEqual(run(`cycleThemeSetting()`), 'dark', '亮 → 暗');
+    assert.strictEqual(run(`document.documentElement.dataset.theme`), 'dark');
+    assert.strictEqual(run(`cycleThemeSetting()`), 'auto', '暗 → 自动(回到循环起点)');
+    assert.strictEqual(run(`document.documentElement.dataset.theme`), 'dark', 'auto 档跟随系统(暗)');
+    assert.strictEqual(store.get('themeSetting'), 'auto', '每一档都要落盘');
 });
 
 test('导入按钮职责分离回归:选文件即读进框;解析按钮单监听纯解析;清空复位一切', async () => {

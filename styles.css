@@ -117,21 +117,19 @@ body {
 header {
     background-color: var(--c-primary);
     color: #fff;
-    /* 收窄:标题栏只承载品牌 + 导航 + AI 状态键 + 主题开关 */
+    /* 收窄:标题栏只承载品牌 + 导航 | AI 状态键 + 主题键 */
     padding: 8px 12px;
-    /* 品牌 / 导航 / 主题开关同处一条(否则 nav 会作为独立一条横在标题栏与内容之间,
+    /* 品牌 / 导航 / AI 状态键 / 主题键同处一条(否则 nav 会作为独立一条横在标题栏与内容之间,
        形成"导入题库卡片上方一大块空白";👤 反馈实测 99px)。
-       ⚠️ 门道在"中间那个孩子才会真的落在正中"(👤 2026-09-14 要求把「⚙ AI 设置」放标题栏中间):
-       三栏 grid(1fr auto 1fr)两侧等宽 ⇒ 中列稳居中;flex + space-between 只均分**间隙**,
-       中项会随左右两件的宽度差被推偏(实测偏到 2/3 处)。
-       ⚠️ 但 grid 只在**桌面档**能用:手机端 nav 是 position:fixed 会脱离文档流,
-       grid 仍给它保留中列 → 品牌被挤半行、主题开关卡在中间(排版错乱的根因);
-       所以手机档(≤768px)改回 flex,让缺席的子项自动退出排布。 */
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
+       ⚠️ 必须用 flex,不能用三栏 grid:手机端 nav 是 position:fixed 会脱离文档流,
+       grid 仍会给它保留一列 → 品牌被挤半行(实测反馈过的排版错乱)。flex 下缺席的子项自动退出排布。
+       (2026-09-14 曾为"让 AI 键落在正中"短暂用过 grid `1fr auto 1fr`;当天 👤 又要求
+        "AI 键挨着主题键" ⇒ 不再需要中列,回到 flex 两段式:左组 | 右组。) */
+    display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 12px;
-    /* 悬浮:吸顶常驻,长列表滚动时站名与主题开关始终可达(👤 反馈);
+    /* 悬浮:吸顶常驻,长列表滚动时站名与主题键始终可达(👤 反馈);
        阴影用来与内容分层,否则同一块蓝底会看起来"粘"在内容上 */
     position: sticky;
     top: 24px;              /* 桌面 body 有 24px padding,偏移对齐才不露背景带 */
@@ -142,7 +140,7 @@ header {
 /* 品牌块:logo + 右下角小字。用 h1 保留"页面唯一一级标题"的语义,
    small 作副题并右对齐到 logo 末端,形成从属关系(👤 要求小字在 logo 右下) */
 h1.brand {
-    min-width: 0;              /* 窄屏可收缩,不把主题开关挤出屏幕 */
+    min-width: 0;              /* 窄屏可收缩,不把右侧那组挤出屏幕 */
     font-size: 16px;
     font-weight: 600;
     line-height: 1.2;
@@ -193,9 +191,7 @@ nav {
     border-bottom: none;
 }
 
-/* 品牌靠左、主题开关靠右 */
-h1.brand { justify-self: start; }
-.theme-switch { justify-self: end; }
+/* 品牌靠左(右组靠右由 header 的 space-between 负责) */
 
 
 /* 内容区统一内边距:三个分区共用同一套值(👤 要求"以后统一")。
@@ -1171,24 +1167,27 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 }
 
 
-/* 输入框 = 一个"带角落动作的盒子"(👤 2026-09-14:清空挪到输入框右上角)。
-   ⚠️ 边框/圆角/聚焦环从 textarea 挪到**盒子**上:角标与文字必须同属一个框,
-      否则右上角的「清空」看着像浮在框外面(而它自己描个边又和 textarea 的边叠成双线)。
-   ⚠️ 角标**独占一行**、不浮在文字上:浮着的话长行钻到按钮底下会被遮住,
-      给 textarea 加 padding-right 又是整块宽度白让(手机上白让 40px 太贵)。 */
+/* 输入框 + 它**上方**右上角的「清空」(👤 2026-09-14:角标要在框**外面**,不在框里面)。
+   ⚠️ 角标独占一行、放框外:放进框里要占掉框内一行高度;浮在文字上又会被长行钻到底下;
+      给 textarea 加 padding-right 则是整块宽度白让(手机上白让 40px 太贵)。
+   ⚠️ 边框/圆角/聚焦环挂在 `.paste-box` 上(它里面就只有 textarea):
+      这样角标贴着框、又不与框线纠缠成一个"双层边"。
+   ⚠️ 角标行**不给固定高度**:它只有 20px 高,给高度反而把卡片顶高(手机上一屏要看完)。 */
+.paste-field { position: relative; }
+.paste-field-head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;   /* 角标贴输入框右上角 */
+    margin-bottom: 2px;
+    min-height: 20px;
+}
 .paste-box {
     border: 1px solid var(--c-border);
     border-radius: 6px;
     background: var(--c-surface);
-    padding: 3px 6px 6px;
+    padding: 6px;
 }
 .paste-box:focus-within { border-color: var(--c-primary); }   /* 聚焦环跟着盒子走 */
-.paste-box-head {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;   /* 角标贴右上角 */
-    height: 22px;
-}
 /* 「清空」角标:小号药丸、无边框(None 必须显式写,否则露浏览器默认黑边)、描边留给 hover。
    它是**三级**动作(擦掉内容),视觉重量要低于「选择文件」那个描边按钮,更低于主键。 */
 .paste-clear {
@@ -2231,7 +2230,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     display: flex;
     align-items: center;
     gap: 12px;
-    min-width: 0;              /* 手机档必须能收缩(否则品牌把主题开关挤出屏幕) */
+    min-width: 0;              /* 手机档必须能收缩(否则品牌把右侧那组挤出屏幕) */
 }
 
 /* 桌面档:左组与导航都不许被压。
@@ -2250,8 +2249,14 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     header nav { flex: none; }
 }
 
-/* 品牌 + 导航的左组与主题开关:三栏 grid 的第 1 / 第 3 列(第 2 列 = AI 状态键)。
-   `.theme-switch { justify-self: end }` 早先就写在品牌那条旁边,这里正是它的用武之地。 */
+/* 标题栏右侧一组 = AI 状态键 + 主题键(👤 2026-09-14:AI 已连接键在主题键**左边**)。
+   两件都是"App 级设置",挨着放成一组;左侧一组仍是品牌 + 导航。 */
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+}
 
 /* 标题栏中间的 AI 状态键(👤 2026-09-14 从导入卡片挪来)。
    ⚠️ 蓝底标题栏上不能沿用卡片的描边样式(白底描边在蓝底上像一块脏补丁)——改用半透明白胶囊,
@@ -2440,7 +2445,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     .paste-box { padding: 3px 8px 8px; }   /* 内边距跟着盒子走(边框在盒子上) */
     #paste-input { min-height: 120px; }
     /* 手机档把角标放大一档(20px 高对指头太细),但仍明显小于下排的 40px 次要按钮 */
-    .paste-box-head { height: 28px; }
+    .paste-field-head { min-height: 26px; }
     .paste-clear { padding: 5px 12px; font-size: 13px; }
 }
 
@@ -2508,15 +2513,11 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     body {
         padding: 0;
     }
-    /* 手机全出血:标题栏吸到屏幕顶;布局从三栏 grid 退回 flex ——
-       nav 在手机档是底部固定条(position:fixed),grid 会给它保一列,
-       于是品牌被挤半行、主题开关卡中间(👤 反馈过的排版错乱)。见 header 规则的注释。 */
+    /* 手机全出血:标题栏吸到屏幕顶。布局本身已是 flex(见 header 规则),
+       这里只把间距收到 8px:标题栏里是"品牌 | AI 状态键 + 主题键"两段,
+       12px 在 360px 屏上会把品牌小字挤到第二行(标题栏 40→54px)。 */
     header {
         top: 0;
-        display: flex;
-        justify-content: space-between;
-        /* 手机档把列间距收到 8px:标题栏里现在是"品牌 + AI 状态键 + 主题开关"三件,
-           12px 间距在 360px 屏上正好差几像素 —— 品牌小字被挤到第二行(标题栏 40→54px)。 */
         gap: 8px;
     }
     .container {
@@ -2740,30 +2741,29 @@ html[data-theme="dark"] .container {
     box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
 }
 
-/* 主题三档开关 */
-/* 主题开关:住在标题栏蓝底上,故用半透明白而非令牌色(令牌是为浅色表面设计的) */
-.theme-switch {
-    display: inline-flex;
-    gap: 0;
-    border: 1px solid rgba(255, 255, 255, 0.45);
-    border-radius: 999px;
-    overflow: hidden;
+/* 主题键 = **一个**简约按钮(👤 2026-09-14:原来"自动|亮|暗"三格分段控件太占地方)。
+   点一次换一档:自动 → 亮 → 暗 → 自动;三枚图标由 data-theme-pref 决定显示哪一枚。
+   ⚠️ 住在标题栏蓝底上,沿用半透明白那一套(令牌是为浅色表面设计的,直接套会在蓝底上糊掉);
+   ⚠️ 边框必须显式声明(否则露浏览器默认黑边);尺寸对齐左侧的 AI 状态键(高 28px)。 */
+.theme-toggle {
     flex: none;
-}
-.theme-opt {
-    border: none;
-    background: none;
-    color: rgba(255, 255, 255, 0.75);
-    padding: 2px 10px;
-    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.38);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
     cursor: pointer;
-    font-family: inherit;
 }
-.theme-opt + .theme-opt { border-left: 1px solid rgba(255, 255, 255, 0.45); }
-.theme-opt.active {
-    background: #fff;
-    color: var(--c-primary);
-}
+.theme-toggle:hover { background: rgba(255, 255, 255, 0.24); }
+.theme-ico { width: 16px; height: 16px; display: none; }
+.theme-toggle[data-theme-pref="auto"] .ico-auto,
+.theme-toggle[data-theme-pref="light"] .ico-light,
+.theme-toggle[data-theme-pref="dark"] .ico-dark { display: block; }
 
 /* 刷题进行中 / 出结果后:隐藏配置区与「开始刷题」。
    ⚠️ 这条**必须全屏宽生效**,不能只写在手机媒体查询里 ——
@@ -2907,7 +2907,7 @@ html[data-theme="dark"] .container {
 }
 
 /* ==================== 验收修复(Y04/Y05) ==================== */
-/* 标题栏现为常驻应用栏(站名 + 主题开关),不再随分区隐藏 —— 见 header 规则 */
+/* 标题栏现为常驻应用栏(站名 + AI 状态键 + 主题键),不再随分区隐藏 —— 见 header 规则 */
 /* 修复2:刷题聚焦时选项被固定操作条遮挡 —— 容器预留操作条+底栏高度,可完整滚动 */
 @media (max-width: 768px) {
     #quiz-section.active:has(#quiz-container:not(.hidden)) #quiz-container {

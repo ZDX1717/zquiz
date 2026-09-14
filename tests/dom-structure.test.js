@@ -49,12 +49,27 @@ test('标题栏悬浮(sticky)的前提:container 不得有 overflow 裁剪', () 
     assert.ok(/z-index\s*:.+/.test(headerRule[0]), 'header 应设置 z-index 以浮在内容之上');
 });
 
-test('主题开关住在标题栏里(每个 tab 都能切主题)', () => {
+test('主题键住在标题栏里,且是**一个**简约按钮(👤 2026-09-14:三格分段控件收成一键)', () => {
     const header = html.slice(html.indexOf('<header>'), html.indexOf('</header>'));
-    assert.ok(header.includes('id="theme-switch"'), '主题开关应在 header 内');
-    assert.ok(header.includes('data-theme-opt="dark"'), '暗色档位应在 header 内');
-    // 首页不得再有第二个开关
-    assert.strictEqual((html.match(/id="theme-switch"/g) || []).length, 1, 'theme-switch 只能有一个');
+    assert.ok(header.includes('id="theme-toggle-btn"'), '主题键应在 header 内');
+    assert.ok(!header.includes('theme-opt'), '三格分段控件(自动|亮|暗)应已删除');
+    assert.strictEqual((html.match(/id="theme-toggle-btn"/g) || []).length, 1, '主题键只能有一个');
+    assert.ok(/data-theme-pref="auto"/.test(header), '默认 = 自动档');
+    assert.ok(/theme-ico ico-auto/.test(header) && /theme-ico ico-light/.test(header) && /theme-ico ico-dark/.test(header),
+        '三枚图标都要在(由 data-theme-pref 决定显示哪一枚)');
+    assert.ok(/title="主题：自动（点击切换）"/.test(header), '图标说不清档位,title / aria-label 要写清');
+    // 循环顺序与接线
+    const theme = readFileSync(path.join(root, 'src', 'theme.js'), 'utf8');
+    assert.ok(/export const THEME_CYCLE = \['auto', 'light', 'dark'\]/.test(theme), '档位顺序:自动 → 亮 → 暗');
+    assert.ok(/export function cycleThemeSetting\(\)/.test(theme), '应有一键换档函数');
+    const main = readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
+    assert.ok(/themeToggleBtn\.addEventListener\('click', \(\) => cycleThemeSetting\(\)\)/.test(main),
+        '点一下换一档的接线要在 main.js');
+    // 主题键是**按钮类**:必须显式声明 border,否则会露浏览器默认黑边;三枚图标只显示一枚
+    assert.ok(/\.theme-toggle \{[^}]*border\s*:\s*1px solid/.test(cssNoComments), '主题键要显式声明边框');
+    assert.ok(/\.theme-ico \{[^}]*display\s*:\s*none/.test(cssNoComments), '默认三枚图标都藏起来');
+    assert.ok(/\.theme-toggle\[data-theme-pref="dark"\] \.ico-dark \{ display: block; \}/.test(cssNoComments),
+        '按 data-theme-pref 只显示对应那枚');
 });
 
 test('品牌块:logo + 右下小字,tagline 是 h1 的嵌套 small', () => {
@@ -64,27 +79,29 @@ test('品牌块:logo + 右下小字,tagline 是 h1 的嵌套 small', () => {
     assert.ok(/<small class="brand-tagline">期末周刷题助手<\/small>/.test(header), 'tagline 应是 h1 内的 small');
 });
 
-test('「⚙ AI 设置」住在标题栏正中(👤 2026-09-14 从导入卡片挪来)', () => {
-    // ① 位置:header 里的**第二个孩子**(中间那一格),且在品牌/导航左组之后、主题开关之前。
-    //    ⚠️ 靠 flex/grid 的**顺序**定位 —— 只有正中的孩子才会真的落在正中。
+test('「⚙ AI 设置」住在标题栏右侧一组,且**在主题键左边**(👤 2026-09-14)', () => {
     const headerOpen = html.indexOf('<header>');
     const header = html.slice(headerOpen, html.indexOf('</header>'));
     const aiIdx = header.indexOf('id="ai-settings-btn"');
     assert.ok(aiIdx > -1, '⚙ AI 设置应在 header 内');
     assert.ok(aiIdx > header.indexOf('</nav>'), '应在品牌 + 导航左组之后');
-    assert.ok(aiIdx < header.indexOf('id="theme-switch"'), '应在主题开关之前(即正中)');
     assert.strictEqual((html.match(/id="ai-settings-btn"/g) || []).length, 1, '只能有一个');
 
-    // ② 桌面档:header 必须三栏等宽(grid 1fr auto 1fr) —— 两侧等宽,中列才稳居中。
-    //    flex + space-between 只均分**间隙**,中项会随左右两件宽度差被推偏(实测偏到 2/3 处)。
-    const headerRule = cssNoComments.match(/^header\s*\{[^}]*\}/m)[0];
-    assert.ok(/display\s*:\s*grid/.test(headerRule), '桌面档 header 应是 grid(三栏)');
-    assert.ok(/grid-template-columns\s*:\s*1fr\s+auto\s+1fr/.test(headerRule), '两侧等宽的中列布局');
+    // ② 右侧一组:AI 状态键与主题键同组,且 AI 在主题键**左边**(👤 2026-09-14 原话)
+    const rightOpen = header.indexOf('class="header-right"');
+    const rightClose = header.indexOf('</div>', rightOpen);
+    assert.ok(rightOpen > -1 && aiIdx > rightOpen && aiIdx < rightClose, '⚙ AI 设置应在 .header-right 组里');
+    const themeIdx = header.indexOf('id="theme-toggle-btn"');
+    assert.ok(themeIdx > aiIdx && themeIdx < rightClose, '主题键应在同一组里、排在 AI 状态键右边');
+    assert.ok(/\.header-right\s*\{[^}]*display\s*:\s*flex/.test(cssNoComments), '.header-right 应是 flex 行');
 
-    // ③ 手机档必须退回 flex:nav 是 position:fixed 会脱离文档流,grid 仍给它保一列 →
-    //    品牌被挤半行、主题开关卡中间(👤 反馈过的排版错乱)。取最后一条 header 规则(手机档在文件末尾)。
-    const mobileHeaders = [...cssNoComments.matchAll(/header\s*\{[^}]*\}/g)].map((m) => m[0]);
-    assert.ok(mobileHeaders.some((r) => /display\s*:\s*flex/.test(r)), '手机档 header 要退回 flex');
+    // ③ header 用 flex,不用三栏 grid:手机端 nav 是 position:fixed 会脱离文档流,
+    //    grid 仍给它保一列 → 品牌被挤半行(👤 反馈过的排版错乱)。
+    //    (2026-09-14 曾为"让 AI 键落在正中"短暂用过 grid `1fr auto 1fr`;👤 当天改口
+    //     "AI 键挨着主题键" ⇒ 不再需要中列,回到 flex 两段式。)
+    const headerRule = cssNoComments.match(/^header\s*\{[^}]*\}/m)[0];
+    assert.ok(/display\s*:\s*flex/.test(headerRule), 'header 应是 flex(手机档 nav 会脱离文档流)');
+    assert.ok(!/grid-template-columns/.test(headerRule), '不该再用三栏 grid(中列居中的需求已被右侧一组取代)');
 
     // ④ 回归:桌面档覆盖规则(`min-width: min-content` / `nav { flex: none }`)必须写在
     //    `.header-left` **基规则之后** —— 媒体查询不加优先级,全靠源序;
@@ -94,7 +111,7 @@ test('「⚙ AI 设置」住在标题栏正中(👤 2026-09-14 从导入卡片�
     assert.ok(baseIdx > -1 && overrideIdx > baseIdx, '桌面档覆盖必须排在基规则之后(源序)');
 
     // ⑤ 导航不吃压缩:中文每个字都能断行,不给 nowrap 的话导航宽度会被算得极窄,
-    //    标题栏左组据此收缩,769~860px 处导航溢出到 AI 状态键底下(实测重叠 35px)。
+    //    标题栏左组据此收缩,窄桌面处导航溢出到 AI 状态键底下(实测重叠 35px)。
     const navBtnRule = cssNoComments.match(/\.nav-btn\s*\{[^}]*\}/)[0];
     assert.ok(/white-space\s*:\s*nowrap/.test(navBtnRule), '导航按钮文字不许折行');
     assert.ok(/header nav\s*\{[^}]*flex\s*:\s*none/.test(cssNoComments), '导航宽度不参与伸缩');
@@ -266,10 +283,15 @@ test('首页「?」= 「导入题库」右边的格式说明悬浮面板(👤 20
     assert.ok(aiIdx > html.indexOf('<header') && aiIdx < html.indexOf('</header>'),
         '⚙ AI 设置应在标题栏(header)里,不该留在 <main> 的卡片里');
     assert.ok(aiIdx > html.indexOf('</nav>'), '⚙ AI 设置应在导航之后、主题开关之前');
-    // ② 「清空」角标与「?」不是一回事:「?」在卡头(标题右边),「清空」在输入框盒子的头行
-    const boxHead = home.slice(home.indexOf('class="paste-box-head"'), home.indexOf('id="paste-input"'));
-    assert.ok(boxHead.includes('id="paste-clear-btn"'),
-        '「清空」应在输入框盒子的头行里(textarea 之前 = 框的右上角)');
+    // ② 「清空」角标与「?」不是一回事:「?」在卡头(标题右边),「清空」在输入框**外面**的上方右侧
+    //    👤 2026-09-14:要在框外面,不在框里面(放框里会占掉框内一行高度)
+    const fieldHead = home.slice(home.indexOf('class="paste-field-head"'), home.indexOf('class="paste-box"'));
+    assert.ok(fieldHead.includes('id="paste-clear-btn"'), '「清空」应在 .paste-field-head 里(框外上方)');
+    assert.ok(home.indexOf('class="paste-field-head"') < home.indexOf('id="paste-input"'),
+        '角标行要排在输入框**之前**(即上方)');
+    assert.ok(!/class="paste-box-head"/.test(home), '旧的框内头行(.paste-box-head)应已删除');
+    assert.ok(/\.paste-field-head\s*\{[^}]*justify-content\s*:\s*flex-end/.test(cssNoComments),
+        '角标行要右对齐(贴输入框右上角)');
     assert.ok(home.indexOf('class="paste-box"') < home.indexOf('id="paste-input"'),
         '输入框应包在 .paste-box 里(边框与聚焦环由盒子承担)');
     assert.ok(/\.paste-box:focus-within\s*\{[^}]*border-color/.test(cssNoComments),
@@ -474,7 +496,7 @@ test('按钮类必须显式声明 border(否则露出浏览器默认黑边)', ()
     // 结果导航按钮戴上浏览器默认边框,表现为"按钮周围出现黑边"。
     // 判据:每个"作为按钮用"的类,其规则里必须出现 border 声明(border:none 或自定义边框)。
     const cssText = String(cssNoComments);
-    const buttonClasses = ['\.nav-btn', '\.action-btn', '\.theme-opt', '\.card-link',
+    const buttonClasses = ['\.nav-btn', '\.action-btn', '\.theme-toggle', '\.card-link',
         '\.prompt-toggle', '\.favorite-btn', '\\.delete-btn', '\.foot-toggle'];
     const missing = [];
     for (const cls of buttonClasses) {
