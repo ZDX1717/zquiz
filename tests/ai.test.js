@@ -310,20 +310,63 @@ test('救援区 B 路线:AI 接口整理 → 结果入输入框 → 解析后逐
     assert.strictEqual(run(`previewData[0].aiNote`), '');
 });
 
-test('统一导入管道回归:PDF 选择 → 双选项提示(AI 提取按钮+隐私说明);.doc 双路不混;委托可用', async () => {
-    const { run, elements, alerts } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp());
+test('统一导入管道回归:PDF 能读就读进输入框,读不准按原因提示;.doc 双路不混;委托可用', async () => {
+    const { onePagePdf, buildPdf } = await import('./helpers/pdf-fixture.mjs');
+    const textPdf = onePagePdf('BT /F1 12 Tf 72 720 Td (Question: 1+1?) Tj T* (A. 1) Tj T* (B. 2) Tj T* (Answer: B) Tj ET');
+    const scanned = onePagePdf('BT /F1 12 Tf ET');
+    const encrypted = buildPdf([
+        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
+        { num: 2, dict: '<< /Type /Pages /Kids [] /Count 0 >>' },
+    ], { encrypt: true });
+    // ⚠️ 字节要**以纯数组**过沙箱:vm 上下文里 Uint8Array 是另一个 realm 的构造器,
+    //    直接塞 Buffer 进去 instanceof 会判假(跨 realm 的经典坑)
+    const { run, elements, alerts } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
+        sandboxExtras: {
+            __pdfBytes: {
+                text: [...new Uint8Array(textPdf)],
+                scanned: [...new Uint8Array(scanned)],
+                encrypted: [...new Uint8Array(encrypted)],
+            },
+        },
+    }));
     run(`init()`);
-    run(`fileInput.files = [{ name: '试卷.pdf' }]`);
-    run(`handleFileSelect({ target: { files: [{ name: '试卷.pdf' }] } })`);
     const notice = elements['import-status'];
-    assert.ok(String(notice.innerHTML).includes('file-ai-copy-btn'), 'PDF 提示要有 AI 提取按钮');
-    assert.ok(String(notice.innerHTML).includes('上传给该 AI 服务'), '要有隐私提示');
-    assert.ok(String(notice.innerHTML).includes('附到对话里'), 'AI 路径要写明附文件步骤');
+    const pick = (name, key) => `handleFileSelect({ target: { files: [{ name: ${JSON.stringify(name)}, arrayBuffer: async () => new Uint8Array(__pdfBytes.${key}) }] } })`;
+    const settle = () => new Promise(r => setTimeout(r, 30));
+
+    // ① 文字版 PDF → 抽出的文字进输入框(与 txt/docx 同一条路)
+    run(pick('卷子.pdf', 'text'));
+    await settle();
+    assert.ok(String(run(`pasteInput.value`)).includes('Question: 1+1?'),
+        'PDF 文字应进输入框,实际输入框:' + JSON.stringify(String(run(`pasteInput.value`))) + ' / 状态行:' + String(notice.textContent).slice(0, 120));
+    assert.strictEqual(run(`previewData.length`), 0, '读取本身不触发预览');
+    assert.ok(String(notice.className).includes('success'), '状态行应报成功');
+    assert.ok(String(notice.textContent).includes('PDF 已读出'), '状态行要说清是 PDF 读出来的:' + String(notice.textContent).slice(0, 60));
+
+    // ② 扫描件(抽不到文字)→ 按原因提示:AI 提取入口 + 隐私说明 + 不用 AI 的路
+    run(pick('扫描.pdf', 'scanned'));
+    await settle();
+    const scanNotice = String(notice.innerHTML);
+    assert.ok(scanNotice.includes('图片'), '要说清"这是图片,读不出文字",实际:' + scanNotice.slice(0, 80));
+    assert.ok(scanNotice.includes('file-ai-copy-btn'), '要给 AI 提取的入口');
+    assert.ok(scanNotice.includes('上传给该 AI 服务'), '要让用户知道材料会上传');
+    assert.ok(scanNotice.includes('提取文字') || scanNotice.includes('选中复制'), '还要给不用 AI 的路');
+
+    // ③ 加密 PDF → 明说密码,且**不给** AI 按钮(聊天 AI 也读不了加密件)
+    run(pick('加密.pdf', 'encrypted'));
+    await settle();
+    const encNotice = String(notice.innerHTML);
+    assert.ok(encNotice.includes('密码'), '要说清有密码保护,实际:' + encNotice.slice(0, 80));
+    assert.ok(!encNotice.includes('file-ai-copy-btn'), '加密件不该给 AI 提取按钮');
+
+    // ④ .doc 仍然两路,且不出现 AI 按钮
     run(`handleFileSelect({ target: { files: [{ name: '试卷.doc' }] } })`);
     const docNotice = String(notice.innerHTML);
     assert.ok(!docNotice.includes('file-ai-copy-btn'), '.doc 不应出现 AI 提取按钮');
     assert.ok(docNotice.includes('另存为') && docNotice.includes('.docx'), '① 必须是转格式');
     assert.ok(docNotice.includes('选中文字'), '② 必须是复制文字');
+
+    // ⑤ 委托还活着:点 AI 提取按钮要有反馈
     run(`lastRawContent = '旧的残留原文'`);
     notice._listeners.click({ target: { id: 'file-ai-copy-btn' } });
     await new Promise(r => setTimeout(r, 0));

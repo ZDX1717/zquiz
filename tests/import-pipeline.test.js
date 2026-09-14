@@ -397,15 +397,15 @@ test('提示文案里引用的按钮名必须真实存在于界面(文案与界�
     }
 });
 
-test('文件流程:PDF 给 AI 提取入口 + 隐私说明;.doc 走"转格式 / 复制文字"', () => {
-    run(`handleFileSelect({ target: { files: [{ name: '卷子.pdf' }] } })`);
-    const pdfNotice = String(elements['import-status'].innerHTML);
-    assert.ok(pdfNotice.includes('file-ai-copy-btn'), 'PDF 要给"复制提示词去 AI 提取"的入口');
-    assert.ok(pdfNotice.includes('上传给该 AI 服务'), 'PDF 走 AI 要把隐私说清');
-    assert.ok(pdfNotice.includes('选中文字'), 'PDF 还要给不用 AI 的那条路');
+test('文件流程:PDF 走真抽取,读不准按原因提示;.doc 走"转格式 / 复制文字"', () => {
+    // PDF 的三种走向由 ai.test.js 逐条覆盖(文字版读进框 / 扫描件提示 / 加密提示);
+    // 这里只守"接线没断":选 .pdf 之后状态行不该停在初始态,且入口不再是老那句"读不了"。
+    run(`handleFileSelect({ target: { files: [{ name: '卷子.pdf', arrayBuffer: async () => new Uint8Array(0) }] } })`);
+    assert.ok(String(elements['import-status'].textContent).includes('正在读取') ||
+        String(elements['import-status'].className).includes('warning'),
+        'PDF 应进入读取/提示流程,实际:' + elements['import-status'].textContent);
     run(`handleFileSelect({ target: { files: [{ name: '卷子.doc' }] } })`);
     const docNotice = String(elements['import-status'].innerHTML);
     assert.ok(docNotice.includes('另存为') && docNotice.includes('.docx'), '.doc 首选"另存为 .docx 再选一次"');
     assert.ok(!docNotice.includes('file-ai-copy-btn'), '.doc 不该出现 AI 提取按钮(AI 聊天也读不了 .doc)');
-    // ⚠️ 「选 txt/Word → 文字读进输入框」这条路由 ai.test.js 用同步 FileReader 桩覆盖,这里不重复
 });

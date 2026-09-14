@@ -4,6 +4,7 @@ import { deleteBankVersion, renameBankVersions, VERSIONS_PER_BANK, saveToLocalSt
 import { downloadFile, hideModal, showModal } from './dom.js';
 import { pushUndo, undo as undoStep, redo as redoStep, canUndo, canRedo, undoLabel, redoLabel, clearUndo, assignExact, cloneQuestion } from './undo.js';
 import { docxToText } from './docx.js';
+import { pdfToText } from './pdf.js';
 import { OFFICIAL_PROMPT, buildCopyText, copyText } from './prompt.js';
 import { toggleFavorite } from './favorites.js';
 import { aiConfigReady, aiFixQuestions, aiAnswerQuestions, aiBaseUrlProblem, aiFormatMaterial, aiMatchKey, aiDiffParts, buildAiNotes, getProvider, mergeAiAnswers, normalizeAiConfig, questionsNeedingAi, testConnection } from './ai.js';
@@ -128,12 +129,23 @@ function readFileIntoBox(file) {
 
     if (name.endsWith('.pdf')) {
         lastRawContent = '';
-        showUnreadableFileNotice(true);
+        file.arrayBuffer()
+            .then(buf => pdfToText(buf))
+            .then(({ text, gate }) => {
+                // 闸门说不行就不导入:扫描件/乱码硬塞进输入框,用户得逐题核对才发现问题,
+                // 比"什么都没有"更害人 —— 这里给原因 + 两条替代路。
+                if (!gate.ok) { showPdfNotice(gate.reason, gate.detail); return; }
+                fillBox(text, 'PDF 文档', { status: (n) => `PDF 已读出 ${n} 字并填入输入框 · 版式可能与原文不同,核对后点「解析并预览」` });
+            })
+            .catch(err => {
+                const msg = err && err.message ? err.message : '文件可能损坏';
+                showPdfNotice(/密码/.test(msg) ? 'encrypted' : (/不是 PDF/.test(msg) ? 'notpdf' : 'broken'), msg);
+            });
         return;
     }
     if (name.endsWith('.doc') && !name.endsWith('.docx')) {
         lastRawContent = '';
-        showUnreadableFileNotice(false);
+        showLegacyDocNotice();
         return;
     }
     if (file === lastFilledFile && (pasteInput.value || '').trim()) {
@@ -141,15 +153,25 @@ function readFileIntoBox(file) {
     }
 
     // 文字进框(不自动解析:这一眼是人工审查抽取质量的机会)
-    const fillBox = (text, label) => {
+    // ⚠️ 必须是**函数声明**(会提升),不能写成 `const fillBox = …`:
+    //    PDF 分支在上面就 return 了,而它的 async 回调里要调 fillBox ——
+    //    用 const 的话那个绑定永远没初始化,回调一跑就 TDZ 报
+    //    "Cannot access 'fillBox' before initialization",表现是**状态行一直停在"正在读取…"**
+    //    (没有报错弹窗、没有日志,只有异步回调静默失败 —— 这种坑只能靠"断言文字真的进了输入框"抓)
+    // 状态文案默认一句到底;PDF 那条因为要提醒"版式可能不同",给自己一条完整句子
+    // (拼在默认句子里会出现"……请核对——可直接编辑……"两个破折号连着的怪句子)
+    function fillBox(text, label, opts = {}) {
         lastFilledFile = file;
         aiSourcedContent = false;
         pasteInput.value = text;
         lastRawContent = text;
         pendingSourceLabel = `文件：${file.name}`;
         hideFileNotice();
-        showImportStatus(`${label}已读出 ${text.length} 字并填入输入框——可直接编辑，点「解析并预览」继续`, 'success');
-    };
+        const msg = opts.status
+            ? opts.status(text.length)
+            : `${label}已读出 ${text.length} 字并填入输入框——可直接编辑，点「解析并预览」继续`;
+        showImportStatus(msg, 'success');
+    }
 
     if (name.endsWith('.docx')) {
         file.arrayBuffer()
@@ -178,10 +200,8 @@ export function handleFileSelect(event) {
         return;
     }
     const name = file.name.toLowerCase();
-    if (name.endsWith('.pdf')) {
-        showUnreadableFileNotice(true);
-    } else if (name.endsWith('.doc') && !name.endsWith('.docx')) {
-        showUnreadableFileNotice(false);
+    if (name.endsWith('.doc') && !name.endsWith('.docx')) {
+        showLegacyDocNotice();
     } else {
         // 选中即读:文字立刻进输入框,「解析并预览」按钮从此只有一个职责 = 解析
         showImportStatus(`正在读取 ${file.name}…`, 'success');
@@ -244,25 +264,62 @@ function hideFileNotice() {
     setStatusNeutral();
 }
 
-// 读不了的格式:两类文件各给两条互不混淆的路。
-// PDF:① AI 提取(AI 聊天能读 PDF 文件,按钮直发提示词) ② 复制文字。
-// 老 .doc:AI 聊天也读不了 .doc,不存在"发给 AI"选项 → ① 另存为 .docx 重选 ② 直接复制文字。
-function showUnreadableFileNotice(isPdf) {
-    if (isPdf) {
+// PDF 读不准时的提示(`reason` 来自 pdf.js 的质量闸门或它抛出的错误)。
+// ⚠️ 四种原因给的**替代路不一样**,不能一句"读不了"打包:
+//   scanned 扫描件 → AI 提取图片文字,或系统自带的「提取文字」
+//   fontmap 字体没映射 → 抽出来是乱码,同样走 AI 或阅读器导出文本
+//   encrypted 有密码 → 聊天 AI 也读不了加密件,所以**不给 AI 按钮**,先解锁另存
+//   notpdf/broken 不是 PDF 或已损坏 → 换文件,给 AI 兜底
+function showPdfNotice(reason, detail) {
+    const AI_BTN = '<div class="file-notice-actions"><button type="button" id="file-ai-copy-btn" class="action-btn secondary">📋 复制提示词，去豆包/Kimi 让 AI 提取</button></div>';
+    const AI_STEPS = '<p class="file-notice-hint">① 点上方按钮复制提示词 → 打开豆包 / Kimi / DeepSeek → <b>把 PDF 文件附到对话里</b> → 把它回复的文字粘回输入框。注意:材料会上传给该 AI 服务。</p>';
+    if (reason === 'encrypted') {
         showFileNotice(
-            '<b>📄 PDF 不能直接读，两个办法：</b>' +
-            '<div class="file-notice-actions"><button type="button" id="file-ai-copy-btn" class="action-btn secondary">① 📋 复制提示词，去豆包/Kimi 让 AI 提取</button></div>' +
-            '<p class="file-notice-hint">① 步骤：点上方按钮复制提示词 → 打开豆包 / Kimi / DeepSeek → <b>把 PDF 文件附到对话里</b> → 粘贴提示词发送 → 把 AI 回复全文粘回输入框。注意：此法会把材料上传给该 AI 服务。</p>' +
-            '<p class="file-notice-hint">② 不想用 AI：直接在 PDF 里选中文字，粘到输入框就行。</p>',
+            '<b>📄 这份 PDF 有密码保护</b>' +
+            `<p class="file-notice-hint">${detail || ''}</p>` +
+            '<p class="file-notice-hint">① 先用密码打开,另存为不加密的版本,再选一次文件。</p>' +
+            '<p class="file-notice-hint">② 或者打开后直接选中文字复制,粘到输入框。</p>',
+            'warning'
+        );
+        return;
+    }
+    if (reason === 'scanned') {
+        showFileNotice(
+            '<b>📄 这份 PDF 是图片,读不出文字</b>' +
+            `<p class="file-notice-hint">${detail || ''}</p>` +
+            AI_BTN + AI_STEPS +
+            '<p class="file-notice-hint">② 不想用 AI:用手机截图或扫描 App 的「提取文字」,也可以直接在阅读器里选中复制。</p>',
+            'warning'
+        );
+        return;
+    }
+    if (reason === 'fontmap') {
+        showFileNotice(
+            '<b>📄 这份 PDF 的字体没带文字映射</b>' +
+            `<p class="file-notice-hint">${detail || ''}</p>` +
+            AI_BTN + AI_STEPS +
+            '<p class="file-notice-hint">② 不想用 AI:用 PDF 阅读器的「导出为文本」,或选中复制。</p>',
             'warning'
         );
         return;
     }
     showFileNotice(
+        '<b>📄 这个文件读不出来</b>' +
+        `<p class="file-notice-hint">${detail || '文件可能已损坏'}</p>` +
+        '<p class="file-notice-hint">① 换一个版本或重新下载,再选一次。</p>' +
+        AI_BTN +
+        '<p class="file-notice-hint">② 也可以点上方按钮,把文件附给聊天 AI 试试提取。</p>',
+        'warning'
+    );
+}
+
+// 老版 .doc:AI 聊天也读不了 .doc,不存在"发给 AI"选项 → ① 另存为 .docx 重选 ② 直接复制文字。
+function showLegacyDocNotice() {
+    showFileNotice(
         '<b>📄 老版 .doc 不能直接读，两个办法：</b>' +
         '<p class="file-notice-hint">① <b>首选转格式</b>：用 Word / WPS 打开 → 另存为 <b>.docx</b> → 回来重新选择文件，文字会自动读进输入框。</p>' +
         '<p class="file-notice-hint">② <b>复制文字</b>：直接在 .doc 里选中文字，粘到输入框就行。</p>' +
-        '<p class="file-notice-hint">提示：转成 .docx 后若格式仍乱，预览页的 AI 整理可一键清理；认不出题目就用下面「解析不出来？」这条路。</p>',
+        '<p class="file-notice-hint">提示：转成 .docx 后若格式仍乱，预览页的 AI 整理可一键清理；认不出题目就用下面「AI 整理成标准格式」这条路。</p>',
         'warning'
     );
 }

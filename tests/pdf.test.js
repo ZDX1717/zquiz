@@ -4,67 +4,11 @@
 // ② 仓库里不留二进制垃圾;③ 造出来的字节流走的是与真实文件同一条解析路径。
 import test from 'node:test';
 import assert from 'node:assert';
-import zlib from 'node:zlib';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { pdfToText, pdfTextGate, parseToUnicodeCMap, bytesToLatin1 } from '../src/pdf.js';
-
-// ---------- 合成 PDF 的小工厂 ----------
-// objs: [{ num, dict, stream?, compress? }] —— dict 是 PDF 字典原文(含 << >>)
-function buildPdf(objs, { encrypt = false } = {}) {
-    const parts = [Buffer.from('%PDF-1.7\n', 'latin1')];
-    for (const o of objs) {
-        let body = `${o.num} 0 obj\n${o.dict}\n`;
-        if (o.stream !== undefined) {
-            const raw = typeof o.stream === 'string' ? Buffer.from(o.stream, 'latin1') : Buffer.from(o.stream);
-            const data = o.compress ? zlib.deflateSync(raw) : raw;
-            body += `stream\n`;
-            parts.push(Buffer.from(body, 'latin1'), Buffer.from(data), Buffer.from('\nendstream\nendobj\n', 'latin1'));
-            continue;
-        }
-        parts.push(Buffer.from(body + 'endobj\n', 'latin1'));
-    }
-    const trailer = encrypt
-        ? 'trailer\n<< /Size 99 /Root 1 0 R /Encrypt 98 0 R >>\n%%EOF\n'
-        : 'trailer\n<< /Size 99 /Root 1 0 R >>\n%%EOF\n';
-    parts.push(Buffer.from(trailer, 'latin1'));
-    return Buffer.concat(parts);
-}
-
-// Identity-H 中文:码位 = 字符码位(真实 PDF 常见做法),配一张 ToUnicode 映射
-function cjkHex(text) {
-    let hex = '';
-    for (const ch of text) hex += ch.charCodeAt(0).toString(16).padStart(4, '0');
-    return hex;
-}
-function cjkCMap(text) {
-    const codes = [...new Set([...text].map(ch => ch.charCodeAt(0)))];
-    return `/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n1 beginbfchar\n`
-        + codes.map(c => `<${c.toString(16).padStart(4, '0')}> <${c.toString(16).padStart(4, '0')}>`).join('\n')
-        + `\nendbfchar\nendcmap\nend\n`;
-}
-
-// 单页 PDF:content 写明内容流,fontObjs 里放字体对象(可注入 CJK 字体)
-function onePagePdf(content, { fontDict = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', fontNum = 5, extraObjs = [], contentFilter = null, compress = false } = {}) {
-    const objs = [
-        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
-        { num: 2, dict: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>' },
-        { num: 3, dict: `<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 ${fontNum} 0 R >> >> /Contents 4 0 R >> ` },
-        {
-            num: 4,
-            // ⚠️ compress 必须**同时**写 /Filter /FlateDecode:写进文件的是压缩后的字节,
-            //    不声明过滤器的话解析器会拿压缩字节当文本(实测表现为"抽出来是空的")
-            dict: `<< /Length ${compress ? zlib.deflateSync(Buffer.from(content, 'latin1')).length : Buffer.byteLength(content, 'latin1')}`
-                + `${compress ? ' /Filter /FlateDecode' : (contentFilter ? ' /Filter ' + contentFilter : '')} >>`,
-            stream: content,
-            compress,
-        },
-        ...extraObjs,
-    ];
-    if (fontDict) objs.push({ num: fontNum, dict: fontDict });
-    return buildPdf(objs);
-}
+import { buildPdf, onePagePdf, cjkHex, cjkCMap } from './helpers/pdf-fixture.mjs';
 
 // ---------- 基础:简单字体的 ASCII 文本 ----------
 test('ASCII 文本:一行一 Td → 抽出文本,行间有换行', async () => {
@@ -272,4 +216,31 @@ test('bytesToLatin1 按字节保真(不把 PDF 当 UTF-8 解)', () => {
     const s = bytesToLatin1(bytes);
     assert.strictEqual(s.length, 7, '一个字节 = 一个字符,长度必须守恒');
     assert.strictEqual(s.charCodeAt(4), 0xe4);
+});
+
+// ---------- 接线守卫(改移动端文件分支前必读) ----------
+test('接线:PDF 必须走真抽取,不许退回"读不了"的老路', () => {
+    // ⚠️ 先剥注释:解释这条 TDZ 坑的注释里**原样写着**坏写法,不剥掉守卫会自己判红(这个坑踩过两次了)
+    const bank = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'bank.js'), 'utf8')
+        .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+    assert.ok(/import \{ pdfToText \} from '\.\/pdf\.js'/.test(bank), 'bank.js 要引入 pdf 抽取');
+    assert.ok(/endsWith\('\.pdf'\)[\s\S]{0,400}pdfToText/.test(bank), '.pdf 分支要真的去抽取');
+    assert.ok(!/showUnreadableFileNotice/.test(bank), '老的一刀切提示函数必须删掉(PDF 现在按原因分四种提示)');
+    assert.ok(/showPdfNotice/.test(bank), '要有按原因的 PDF 提示');
+    // 🚨 fillBox 必须是**函数声明**(提升):PDF 分支在它前面就 return 了,
+    //    而它的 async 回调要调 fillBox —— 用 const 声明会 TDZ,回调静默失败,
+    //    表现是"状态行一直停在正在读取…"(实测踩过:没有任何报错,只有断言"文字进没进框"能抓到)
+    assert.ok(/function fillBox\(text, label, opts = \{\}\)/.test(bank), 'fillBox 必须是函数声明(会提升)');
+    assert.ok(!/const fillBox\s*=/.test(bank), 'fillBox 不许写成 const(会在 PDF 那条 async 路径上 TDZ)');
+});
+
+test('PDF 提示的四种原因各有各的替代路(不能一句"读不了"打包)', () => {
+    const bank = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'bank.js'), 'utf8');
+    // 扫描件与字体没映射:给 AI 提取入口(附文件)+ 不用 AI 的路
+    assert.ok(/reason === 'scanned'/.test(bank) && /reason === 'fontmap'/.test(bank), '两种"抽不出文字"的原因要分开');
+    // 加密:聊天 AI 也读不了加密件 → 不给 AI 按钮
+    const enc = bank.slice(bank.indexOf("reason === 'encrypted'"), bank.indexOf("reason === 'scanned'"));
+    assert.ok(enc.length > 0, '应有 encrypted 分支');
+    assert.ok(!/file-ai-copy-btn/.test(enc), '加密件不该出现 AI 提取按钮');
+    assert.ok(/密码/.test(enc), '要说清是密码问题');
 });
