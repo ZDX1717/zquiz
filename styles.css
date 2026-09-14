@@ -1017,11 +1017,14 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     margin-right: auto;
 }
 
+/* 导入卡:上内边距压掉一截(👤 2026-09-14:"「导入题库」上面的空白行缩小")——
+   卡头自己还有 38px 最小高,这里只管卡片自己的内边距;左右和下边不动,免得输入框变窄。 */
 .operation-card {
     background-color: var(--c-surface-alt);
     border-radius: 6px;
     padding: 24px;
 }
+.home-import { padding-top: 14px; }
 
 .operation-card h3 {
     margin-bottom: 16px;
@@ -1031,7 +1034,14 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 /* 版本信息 + 简介(👤 2026-09-14:在导入模块上方加一块)。
    ⚠️ 手机一屏要同时装下它和导入卡 ⇒ 只给两行:标题行(名字 + 版本)与一句简介。
       别往里加第二句介绍、也别加图标 —— 加什么都是从导入卡的高度里抢。 */
-.home-about { margin-bottom: 12px; }
+.home-about {
+    margin-bottom: 12px;
+    /* 灰底 + 圆角 = 与导入卡(.operation-card)和其他模块**同一套观感**(👤 2026-09-14:
+       原来它是一段裸文字浮在白底上,跟周围格格不入)。色值取同一个令牌,别各写各的灰。 */
+    background-color: var(--c-surface-alt);
+    border-radius: 6px;
+    padding: 10px 14px;
+}
 .home-about-title {
     margin: 0;
     display: flex;
@@ -2351,10 +2361,13 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     justify-content: flex-start;
     gap: 8px;
     flex-wrap: wrap;
-    min-height: 44px;
+    /* 38px:够放进 28px 的「清空」与 24px 的「?」,又不至于在标题上方留一条空带
+       (👤 2026-09-14:"「导入题库」上面的空白行缩小")。 */
+    min-height: 38px;
     padding: 0;
     margin-bottom: 8px;
-    border-bottom: 1px solid var(--c-border-light);
+    /* 🚫 这里原来有一条 `border-bottom` 做"卡头与输入框的分隔线",👤 2026-09-14 要求删掉:
+       卡头的灰底 + 标题本身就分得开,再加一条线只是噪音。 */
 }
 .home-import .card-head h3 { margin: 0; font-size: 15px; }
 .home-help-btn {
@@ -2602,6 +2615,9 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
         padding: 16px 12px;
         margin-bottom: 12px;
     }
+    /* ⚠️ 必须写在 .operation-card 之后(源序):首页导入卡的上内边距再压一档 ——
+       "「导入题库」上面的空白行缩小"(👤 2026-09-14)。只压顶,左右/下不动,免得输入框变窄。 */
+    .home-import { padding-top: 8px; }
     .operation-card h3 {
         margin-top: 0;
         margin-bottom: 8px;

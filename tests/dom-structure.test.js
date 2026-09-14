@@ -136,8 +136,27 @@ test('首页顶部:版本信息 + 简介模块(👤 2026-09-14 要求加在导�
     assert.strictEqual(inCode, inPkg,
         `src/version.js(${inCode})与 package.json(${inPkg})必须一致 —— 发布时两处一起改`);
     // 简介模块两行封顶:手机一屏要同时装下它和导入卡,多一行都是从导入卡里抢高度
-    assert.ok(/\.home-about \.home-about-desc/.test(cssNoComments) || /\.home-about-desc\s*\{/.test(cssNoComments),
-        '简介那句要有自己的样式(字号小一档)');
+    assert.ok(/\.home-about-desc\s*\{/.test(cssNoComments), '简介那句要有自己的样式(字号小一档)');
+    // 底色与导入卡**同款**(👤 2026-09-14:"加灰色底,和其他模块保持统一")—— 都用同一个令牌,别各写各的灰
+    const aboutRule = cssNoComments.match(/\n\.home-about \{([^}]*)\}/)[1];
+    assert.ok(/background-color\s*:\s*var\(--c-surface-alt\)/.test(aboutRule), '简介模块要用 --c-surface-alt 灰底');
+    assert.ok(/border-radius\s*:\s*6px/.test(aboutRule), '圆角与导入卡一致(6px)');
+    assert.ok(/padding\s*:/.test(aboutRule), '有底色就得有内边距,否则文字贴边');
+});
+
+test('导入卡头:不留"标题上方的空带",也不要输入框上面那条分隔线(👤 2026-09-14)', () => {
+    const headRule = cssNoComments.match(/\n\.home-import \.card-head \{([^}]*)\}/)[1];
+    // 🚫 分隔线删掉:卡头的灰底 + 标题本身就分得开,再加一条线只是噪音
+    assert.ok(!/border-bottom\s*:/.test(headRule), '卡头不该再有底部分隔线');
+    // 最小高压到 38px(够放 28px 的「清空」与 24px 的「?」,又不在标题上方留空带)
+    const mh = headRule.match(/min-height\s*:\s*(\d+)px/);
+    assert.ok(mh && Number(mh[1]) <= 38, `卡头最小高应 ≤38px(现在 ${mh && mh[1]}),别长回去`);
+    // 导入卡自身也压掉顶部留白(桌面 14 / 手机 8)—— 实测"「导入题库」上方留白"从 26px 降到 15px(手机档)
+    assert.ok(/\.home-import \{ padding-top: 14px; \}/.test(cssNoComments), '桌面档导入卡上内边距 14px');
+    assert.ok(/\.home-import \{ padding-top: 8px; \}/.test(cssNoComments), '手机档导入卡上内边距 8px');
+    // ⚠️ 手机档那条必须写在 .operation-card 之后(源序),否则被它盖掉
+    assert.ok(cssNoComments.lastIndexOf('.home-import { padding-top: 8px; }')
+        > cssNoComments.lastIndexOf('padding: 16px 12px;'), '手机档那两条也要守源序');
 });
 
 test('放大输入框的抓手:够大、可拖、可键控、上下限夹住(👤 2026-09-14:"按钮放大一点")', () => {
