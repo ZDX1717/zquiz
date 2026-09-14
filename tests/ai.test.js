@@ -287,6 +287,8 @@ test('「复制提示词和题目」必须把题目原文一起复制(👤 2026-
     await new Promise(r => setImmediate(r));
     assert.strictEqual(copied.length, 1, 'PDF 那条路也要复制一次');
     assert.ok(!copied[0].includes('1+1等于几'), 'PDF 场景只要提示词(没有文字可合并),不许带上一位用户的原文');
+    // 👤 2026-09-14:PDF 那条要用**PDF 专用提示词**(先让 AI 索要文件,收到就直接提取),不是整理那条
+    assert.ok(/请把这个 PDF 文件发给我/.test(copied[0]), 'PDF 场景应复制 PDF 专用提示词,实际:' + copied[0].slice(0, 40));
 });
 
 test('选一个 GBK 编码的 txt:文字正确进输入框,并说明按什么编码解的', async () => {

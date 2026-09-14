@@ -6,7 +6,7 @@ import { pushUndo, undo as undoStep, redo as redoStep, canUndo, canRedo, undoLab
 import { docxToText } from './docx.js';
 import { pdfToText } from './pdf.js';
 import { decodeTextBytes, scoreText } from './decode.js';
-import { OFFICIAL_PROMPT, buildCopyText, copyText } from './prompt.js';
+import { OFFICIAL_PROMPT, PDF_EXTRACT_PROMPT, buildCopyText, copyText } from './prompt.js';
 import { toggleFavorite } from './favorites.js';
 import { aiConfigReady, aiFixQuestions, aiAnswerQuestions, aiBaseUrlProblem, aiFormatMaterial, aiMatchKey, aiDiffParts, buildAiNotes, getProvider, mergeAiAnswers, normalizeAiConfig, questionsNeedingAi, testConnection } from './ai.js';
 import { isAiTested, loadAiConfig, loadRecycledBanks, markAiTested, purgeRecycledBank, recycleBank, restoreRecycledBank, saveAiConfig, saveRecycledBanks, recordAiUsage } from './storage.js';
@@ -289,7 +289,7 @@ function hideFileNotice() {
 //   notpdf/broken 不是 PDF 或已损坏 → 换文件,给 AI 兜底
 function showPdfNotice(reason, detail) {
     const AI_BTN = '<div class="file-notice-actions"><button type="button" id="file-ai-copy-btn" class="action-btn secondary">📋 复制提示词，去豆包/Kimi 让 AI 提取</button></div>';
-    const AI_STEPS = '<p class="file-notice-hint">① 点上方按钮复制提示词 → 打开豆包 / Kimi / DeepSeek → <b>把 PDF 文件附到对话里</b> → 把它回复的文字粘回输入框。注意:材料会上传给该 AI 服务。</p>';
+    const AI_STEPS = '<p class="file-notice-hint">① 点上方按钮复制提示词 → 打开豆包 / Kimi / DeepSeek 粘贴发送 → <b>它会让你把这份 PDF 发过去</b> → 发完它直接提取整理 → 把结果粘回输入框。注意:材料会上传给该 AI 服务。</p>';
     if (reason === 'encrypted') {
         // ⚠️ 这里**不重复 detail**:抛出的错误消息本身就是"这份 PDF 有密码保护…",
         //    和标题一模一样 —— 实测线上会渲染成"这份 PDF 有密码保护这份 PDF 有密码保护,先解锁…"
@@ -316,8 +316,9 @@ function showPdfNotice(reason, detail) {
         showFileNotice(
             '<b>📄 这份 PDF 里叠着水印或另一层文字</b>' +
             `<p class="file-notice-hint">${detail || ''}</p>` +
-            '<p class="file-notice-hint">① 这种文件抽出来的文字会和正文交错,建议用下面的「AI 整理成标准格式」让它按题号理顺。</p>' +
-            '<p class="file-notice-hint">② 或者换一份**没有水印**的源文件 / 直接复制文字粘贴。</p>',
+            AI_BTN +
+            '<p class="file-notice-hint">① 点上方按钮复制提示词 → 发给豆包 / Kimi / DeepSeek → 它会让你把这份 PDF 发过去 → 发完它直接提取整理。注意:材料会上传给该 AI 服务。</p>' +
+            '<p class="file-notice-hint">② 也可以在本机用「AI 整理成标准格式」试(需要先配 Key);或换一份没有水印的源文件。</p>',
             'warning'
         );
         return;
@@ -364,7 +365,12 @@ export async function copyOfficialPrompt(forcePromptOnly) {
     const promptOnly = forcePromptOnly === true;
     // forcePromptOnly:PDF/doc 场景没有文字可合并,只要提示词(防止误合并上一次的原文)
     const material = promptOnly ? '' : ((pasteInput.value || '').trim() || lastRawContent);
-    const ok = await copyText(buildCopyText(OFFICIAL_PROMPT, material));
+    // ⚠️ 两条提示词分工不同:
+    //   · 有原文(粘贴/文件读出来了但解析不出题)⇒ OFFICIAL_PROMPT + 原文;
+    //   · **没有原文**(PDF 读不出文字,文件在用户手上)⇒ PDF_EXTRACT_PROMPT(不带材料):
+    //     它先让 AI 索要文件,收到文件后直接提取整理(👤 2026-09-14 定的效果)。
+    const prompt = promptOnly ? PDF_EXTRACT_PROMPT : OFFICIAL_PROMPT;
+    const ok = await copyText(buildCopyText(prompt, material));
     if (ok) {
         copyPromptBtn.textContent = material
             ? `✓ 已复制提示词+题目(${material.length} 字)`
@@ -372,7 +378,7 @@ export async function copyOfficialPrompt(forcePromptOnly) {
         setTimeout(() => { copyPromptBtn.textContent = '📋 复制提示词和题目'; }, 2500);
         showImportStatus(material
             ? '已复制提示词+题目原文:整段粘贴给豆包 / Kimi / DeepSeek,把整理结果粘回这里'
-            : '提示词已复制:打开豆包 / Kimi / DeepSeek,附上文件后粘贴发送,把 AI 回复粘回输入框', 'success');
+            : '提示词已复制 —— 粘贴发给豆包 / Kimi / DeepSeek,它会先让你把 PDF 发过去;发完它就自己提取整理,把结果粘回输入框', 'success');
     } else {
         showImportStatus('复制失败:请长按提示词文字手动复制', 'error');
     }
