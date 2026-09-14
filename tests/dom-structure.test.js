@@ -283,6 +283,20 @@ test('导入输入框:必须自动换行(👤 2026-09-13 报"提示字显示不�
     assert.deepStrictEqual(offenders, [], `输入框上不许写 white-space: pre(会关掉自动换行):${offenders.join(' / ')}`);
 });
 
+test('导入输入框的提示词:两条路都要说清(粘贴 / 选文件)(👤 2026-09-13 对齐流程)', () => {
+    const m = html.match(/id="paste-input"[^>]*placeholder="([^"]*)"/);
+    assert.ok(m, '输入框应有提示词');
+    const ph = m[1];
+    // ① 用户第一眼要能看出"两条路":直接粘贴 / 选文件
+    assert.ok(ph.includes('粘贴'), '要写明可以直接粘贴');
+    assert.ok(ph.includes('选择文件'), '要写明也可以选文件导入');
+    // ② 说清哪些文件能吃(旧文案只提 txt/docx,用户以为 PDF/Word 不行)
+    assert.ok(/Word|docx/.test(ph), '要提到 Word');
+    assert.ok(/PDF/.test(ph), '要提到 PDF(PDF 会在选择后给出专门提示)');
+    // ③ 说明"读出来的文字会进输入框"(不然用户不知道读进哪去了)
+    assert.ok(/读进本框|填入/.test(ph), '要说明文件的文字会进输入框');
+});
+
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {
     const cssText = String(cssNoComments);
     for (const sel of ['#home-section > .operation-card', '#banks-section > .banks-list']) {

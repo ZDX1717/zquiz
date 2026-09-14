@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
 import { loadApp, makeEl } from './helpers/vm-harness.mjs';
 
 const { run, elements, store, alerts, sandbox, domContentLoadedCount } = await loadApp({ promptValue: 'AI题库' });
@@ -322,4 +325,55 @@ test('单库文件(没有分节标记)仍走原来的单库流程', () => {
     assert.strictEqual(run('previewBanks.length'), 0, '没有标记就不该冒出多库');
     assert.strictEqual(run('previewBankMode'), 'merge');
     assert.strictEqual(run('previewData.length'), 1);
+});
+
+// ==================== 首页导入流程对齐(👤 2026-09-13 定口径)====================
+// 生成的流程:提示词给出两条路(粘贴 / 选文件)→ 选到 doc/pdf 给专门提示 →
+// 解析不出题目时**必须**提示 + 自动展开救援区。三件事,少一件用户就找不到路。
+const HTML_SRC = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
+
+test('解析不出题目 → 提示 + 自动展开「AI 格式整理」救援区(不能只在状态行里提一句)', () => {
+    elements['ai-rescue'].open = false;
+    elements['paste-input'].value = '今天天气不错，我去公园散步，看到很多花，心情很好。';
+    run('parsePastedText()');
+    const st = elements['import-status'];
+    assert.ok(String(st.className).includes('error'), '应是错误态提示');
+    assert.strictEqual(elements['ai-rescue'].open, true,
+        '解析不出来必须**自动展开**救援区 —— 光提示"上方有…"而那段是收起的,等于什么都没给');
+    assert.ok(!/复制官方提示词/.test(String(st.textContent)),
+        '不许再引用界面上不存在的名字「复制官方提示词」');
+    assert.ok(/AI 格式整理/.test(String(st.textContent)), '提示要点名救援区里真正能点的按钮');
+});
+
+test('提示文案里引用的按钮名必须真实存在于界面(文案与界面不许各说各话)', () => {
+    const quoted = (text) => [...String(text).matchAll(/「([^」]+)」/g)].map(m => m[1]);
+    // ① 解析失败提示
+    elements['paste-input'].value = 'zzz 这也不是题目';
+    run('parsePastedText()');
+    const msg = String(elements['import-status'].textContent);
+    const names = quoted(msg);
+    assert.ok(names.length >= 2, '提示里应点名救援区的按钮,实际:' + msg);
+    for (const n of names) {
+        assert.ok(HTML_SRC.includes(n), `提示引用了界面上不存在的「${n}」—— 文案必须用真按钮名`);
+    }
+    // ② 老版 .doc 提示里引用的预览页按钮
+    run(`handleFileSelect({ target: { files: [{ name: '卷子.doc' }] } })`);
+    const docNotice = String(elements['import-status'].innerHTML);
+    assert.ok(!/AI 兜底整理/.test(docNotice), '「AI 兜底整理」是旧名,界面上的按钮叫「🤖 AI 格式整理(不改内容)」');
+    for (const n of quoted(docNotice).filter(x => /AI/.test(x))) {
+        assert.ok(HTML_SRC.includes(n), `提示引用了界面上不存在的「${n}」`);
+    }
+});
+
+test('文件流程:PDF 给 AI 提取入口 + 隐私说明;.doc 走"转格式 / 复制文字"', () => {
+    run(`handleFileSelect({ target: { files: [{ name: '卷子.pdf' }] } })`);
+    const pdfNotice = String(elements['import-status'].innerHTML);
+    assert.ok(pdfNotice.includes('file-ai-copy-btn'), 'PDF 要给"复制提示词去 AI 提取"的入口');
+    assert.ok(pdfNotice.includes('上传给该 AI 服务'), 'PDF 走 AI 要把隐私说清');
+    assert.ok(pdfNotice.includes('选中文字复制'), 'PDF 还要给不用 AI 的那条路');
+    run(`handleFileSelect({ target: { files: [{ name: '卷子.doc' }] } })`);
+    const docNotice = String(elements['import-status'].innerHTML);
+    assert.ok(docNotice.includes('另存为') && docNotice.includes('.docx'), '.doc 首选"另存为 .docx 再选一次"');
+    assert.ok(!docNotice.includes('file-ai-copy-btn'), '.doc 不该出现 AI 提取按钮(AI 聊天也读不了 .doc)');
+    // ⚠️ 「选 txt/Word → 文字读进输入框」这条路由 ai.test.js 用同步 FileReader 桩覆盖,这里不重复
 });

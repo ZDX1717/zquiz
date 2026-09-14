@@ -87,6 +87,8 @@ const viewAllCount = document.getElementById('view-all-count');
 const viewWarnedCount = document.getElementById('view-warned-count');
 const promptToggleBtn = document.getElementById('prompt-toggle-btn');
 const promptContent = document.getElementById('prompt-content');
+// 救援区(👤 2026-09-13 对齐口径:解析不出来时要**自动展开**它,不能只在状态行里"提一句")
+const aiRescuePanel = document.getElementById('ai-rescue');
 // AI 设置与预览兜底
 const aiSettingsBtn = document.getElementById('ai-settings-btn');
 const rescueAiBtn = document.getElementById('rescue-ai-btn');
@@ -257,7 +259,7 @@ function showUnreadableFileNotice(isPdf) {
         '<b>📄 老版 .doc 不能直接读，两个办法：</b>' +
         '<p class="file-notice-hint">① <b>转格式（推荐）</b>：用 Word / WPS 打开 → 另存为 <b>.docx</b> → 回来重新选择文件，文字会自动读进输入框。</p>' +
         '<p class="file-notice-hint">② <b>复制文字</b>：直接在 .doc 里选中文字复制，粘贴到输入框（任何格式通用）。</p>' +
-        '<p class="file-notice-hint">提示：转成 .docx 导入后若格式仍乱，可用预览页的「🤖 AI 兜底整理」一键清理。</p>',
+        '<p class="file-notice-hint">提示：转成 .docx 导入后若格式仍乱，预览页有「🤖 AI 格式整理(不改内容)」一键清理；连题目都认不出时，下方「AI 格式整理」也能把原文理顺。</p>',
         'warning'
     );
 }
@@ -285,6 +287,18 @@ export async function copyOfficialPrompt(forcePromptOnly = false) {
 }
 
 
+// 展开并滚到「AI 格式整理」救援区(解析失败时的必经一步)
+// ⚠️ 桩里没有 scrollIntoView,必须先 typeof 判一下;老浏览器不认 options,要能退回无参调用。
+function openRescuePanel() {
+    if (!aiRescuePanel) return;
+    aiRescuePanel.open = true;
+    if (typeof aiRescuePanel.scrollIntoView === 'function') {
+        try { aiRescuePanel.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+        catch (e) { aiRescuePanel.scrollIntoView(); }
+    }
+}
+
+
 export function parsePastedText() {
     const text = pasteInput.value;
     if (!text.trim()) {
@@ -305,7 +319,13 @@ export function parsePastedText() {
         ? sectionsData.flatMap(sec => sec.questions.map(q => ({ q, bank: sec.name })))
         : parseQuestionsText(text);
     if (importedQuestions.length === 0) {
-        showImportStatus('没有解析出有效题目。试试上方「复制官方提示词」用 AI 整理', 'error');
+        // 🚨 解析不出来 = 提示 + **把救援区摊在眼前**(👤 2026-09-13 对齐生成的流程)。
+        // 以前只写一句"试试上方「复制官方提示词」用 AI 整理":那段是默认**收起**的 <details>,
+        // 屏幕上根本看不到,而且"复制官方提示词"这个名字在界面上也不存在(实际按钮叫
+        // 「① 📋 复制提示词+题目」/「🤖 AI 格式整理并填入输入框」)。
+        // 规则:① 状态行说清下一步 ② 展开救援区 ③ 滚到它 —— 三件事一起做,少一件用户就找不到路。
+        showImportStatus('没解析出有效题目 —— 已为你展开下方「AI 格式整理」:点「🤖 AI 格式整理并填入输入框」让 AI 理顺原文(不改内容),或点「① 📋 复制提示词+题目」自己发给聊天 AI', 'error');
+        openRescuePanel();
         return;
     }
     const aiSource = aiSourcedContent;
