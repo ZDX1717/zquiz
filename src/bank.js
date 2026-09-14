@@ -277,7 +277,7 @@ function showPdfNotice(reason, detail) {
         showFileNotice(
             '<b>📄 这份 PDF 有密码保护</b>' +
             `<p class="file-notice-hint">${detail || ''}</p>` +
-            '<p class="file-notice-hint">① 先用密码打开,另存为不加密的版本,再选一次文件。</p>' +
+            '<p class="file-notice-hint">① 用它打开:要密码就输密码;不用密码也能打开的话,说明只是「权限密码」,另存一份不加密的副本,再选那个副本。</p>' +
             '<p class="file-notice-hint">② 或者打开后直接选中文字复制,粘到输入框。</p>',
             'warning'
         );

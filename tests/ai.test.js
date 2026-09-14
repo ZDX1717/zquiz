@@ -357,6 +357,7 @@ test('统一导入管道回归:PDF 能读就读进输入框,读不准按原因�
     await settle();
     const encNotice = String(notice.innerHTML);
     assert.ok(encNotice.includes('密码'), '要说清有密码保护,实际:' + encNotice.slice(0, 80));
+    assert.ok(/不加密的副本|权限密码/.test(encNotice), '要给出"另存为不加密副本"这条可执行的路(很多文件只是权限密码)');
     assert.ok(!encNotice.includes('file-ai-copy-btn'), '加密件不该给 AI 提取按钮');
 
     // ④ .doc 仍然两路,且不出现 AI 按钮
