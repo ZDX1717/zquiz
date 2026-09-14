@@ -912,6 +912,11 @@ test('版本记录住在「题库设置」里,且每条都能删(👤 2026-09-11
 
 test('题库页头部:标题 + 一行三键(导出题库 / ＋ 创建题库 / 🗑 回收站)(👤 2026-09-12)', () => {
     const banksSection = html.slice(html.indexOf('id="banks-section"'), html.indexOf('<!-- 创建题库模态框'));
+    // 「上次导入」行(👤 2026-09-13 二改):必须在**库列表之后**,不许再压在第一张卡前面
+    const listIdx = banksSection.indexOf('id="banks-list"');
+    const infoIdx = banksSection.indexOf('id="last-import-info"');
+    assert.ok(infoIdx > listIdx && infoIdx > -1,
+        '「上次导入」应排在题库列表**最末尾**(与库卡同列),不许放在列表上方');
     const header = banksSection.slice(banksSection.indexOf('banks-header'), banksSection.indexOf('banks-list'));
     const exportIdx = header.indexOf('export-all-btn');
     const createIdx = header.indexOf('create-bank-btn');
@@ -963,6 +968,27 @@ test('题库页头部:标题 + 一行三键(导出题库 / ＋ 创建题库 / �
     // ⑥ 导出题库**离开**了题库设置
     const modal = html.slice(html.indexOf('id="edit-bank-modal"'), html.indexOf('id="question-card-modal"'));
     assert.ok(!modal.includes('export-all-btn'), '题库设置里不该还有它');
+});
+
+test('题库页:上次导入行在列表末尾 + 手机档库列表不自己滚(👤 2026-09-13)', () => {
+    // ① 上次导入行 = 列表**末尾**的一条归档备注(与库卡同列),不再是列表上方的一行
+    const section = html.slice(html.indexOf('id="banks-section"'), html.indexOf('<!-- 创建题库模态框'));
+    assert.ok(section.indexOf('id="last-import-info"') > section.indexOf('id="banks-list"'),
+        '「上次导入」应在库列表之后');
+    const rule = cssNoComments.match(/\n\.banks-last-import \{([^}]*)\}/);
+    assert.ok(rule, '应有 .banks-last-import 的规则');
+    assert.ok(/max-width\s*:\s*var\(--reading-width\)/.test(rule[1]),
+        '它要走阅读档宽度 —— 和题库卡同一列(👤:"和题库卡并列")');
+    assert.ok(/margin\s*:\s*12px auto 0/.test(rule[1]),
+        '它的外边距应只有上边距(排在末尾,不再有"下方 10px"那套列表上行距)');
+
+    // ② 手机档:库列表**不自己滚**(否则页面 + 列表 = 两个滚动区,滑到底会剩一块框下空白 + 底部白条)
+    const blocks = [...cssNoComments.matchAll(/@media \(max-width: 768px\) \{([\s\S]*?)\n\}/g)].map(m => m[1]);
+    const hit = blocks.some(b => /\.banks-list \{[\s\S]{0,120}?max-height: none;[\s\S]{0,120}?overflow: visible;/.test(b));
+    assert.ok(hit, '手机档应有 .banks-list { max-height:none; overflow:visible } —— 让页面当唯一滚动容器');
+    // 桌面档保留 600px 内滚(列表长了不该把头部推很远)
+    assert.ok(/\n\.banks-list \{\n\s*max-height: 600px;\n\s*overflow-y: auto;\n\}/.test(cssNoComments),
+        '桌面档应保留 600px 的内滚');
 });
 
 test('回收站:在创建按钮右侧,点开是悬浮菜单(👤 2026-09-12)', () => {

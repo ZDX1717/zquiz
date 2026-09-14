@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1068">
+    <link rel="stylesheet" href="styles.css?v=1069">
 </head>
 <body>
     <div class="container">
@@ -282,12 +282,15 @@ A：选项A  B：选项B
                         </div>
                     </div>
                 </div>
-                <!-- 上次导入:纯展示(👤 2026-09-13 从首页挪来)。
-                     ⚠️ 撤销不再有"批次级"按钮 —— 要回退去库卡的版本记录(导入前会自动存一版)。 -->
-                <p id="last-import-info" class="banks-last-import">暂无导入记录</p>
                 <div id="banks-list" class="banks-list">
                     <p class="empty-message">暂无题库</p>
                 </div>
+                <!-- 上次导入:纯展示(👤 2026-09-13 从首页挪来)。
+                     ⚠️ 撤销不再有"批次级"按钮 —— 要回退去库卡的版本记录(导入前会自动存一版)。
+                     👤 2026-09-13 二改:从**列表上方**挪到**列表最末尾** —— 它是一句"归档备注",
+                     不该压在第一张库卡前面抢位置;放末尾才和题库卡**同一列、同一层级**(👤 原话:
+                     "放到题库最末尾(不要悬浮!和题库卡并列)")。 -->
+                <p id="last-import-info" class="banks-last-import">暂无导入记录</p>
             </section>
         </main>
 
@@ -670,6 +673,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1068"></script>
+    <script type="module" src="src/main.js?v=1069"></script>
 </body>
 </html>

@@ -3617,9 +3617,11 @@ html.is-standalone .install-hint { display: none !important; }
 }
 .version-step-row .meta-note { flex: 1 1 auto; margin: 0; font-size: 12px; }
 
-/* 题库页的"上次导入"信息行(从首页搬来,只作展示) */
+/* 题库页的"上次导入"信息行(从首页搬来,只作展示)。
+   👤 2026-09-13 二改:位置从**列表上方**挪到**列表最末尾** —— 它是一条归档备注,
+   排在库卡前面会抢位置;挪到末尾后与题库卡同列(同走阅读档宽度)、同一层级。 */
 .banks-last-import {
-    margin: 0 auto 10px;
+    margin: 12px auto 0;
     max-width: var(--reading-width);
     font-size: 12px;
     color: var(--c-text-faint);
@@ -3742,6 +3744,16 @@ html.is-standalone .install-hint { display: none !important; }
         max-height: none;
         overflow: visible;
         flex: none;
+    }
+    /* 题库页同理(👤 2026-09-13 反馈"题库滑到最下面再往上滑,底部仍然有悬浮的白条"):
+       库列表原来被卡在 max-height:600px 的内滚框里 —— 手机上于是有**两个滚动区**(页面 + 列表框),
+       滑到框底再往上滑时页面几乎不动,框底下面是 70px 空白,再接固定的底部 tab 栏,看着就是
+       "一条悬浮的白条"。手机档让它**不自己滚**(整页当唯一滚动容器):卡片一直长下去,
+       末尾接「上次导入」行,没有"卡在半截"的框底,也没有框下那块空白。
+       ⚠️ 桌面档保留 600px 内滚:桌面上列表长了会把「＋ 创建题库」推得很远,内滚更合适。 */
+    .banks-list {
+        max-height: none;
+        overflow: visible;
     }
     /* 题号列表:只留标题一行(它只用来跳题),展开后最多 34vh,不挤掉正在编辑的内容 */
     .editor-list-panel .editor-list-body { display: none; }
