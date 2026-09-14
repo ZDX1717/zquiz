@@ -856,7 +856,12 @@ function runsToText(runs) {
             if (!l.vertical && prev) {
                 const gap = r.alongCoord - prev.advEnd;
                 const known = (prev.measured && r.measured) || r.tjGap;
-                if (known && gap > SEP_EM * Math.max(prev.size, r.size)
+                // ⚠️ 汉字之间**不补空格**:中文排版没有词间空格,而两端对齐的行里字距会被拉开,
+                //    一补就是"结果不仅 炸死了乙"这种多余空格(真文件实测)。
+                //    汉字之间的分隔交给解析器(它按 `A.`~`H.` 的连续性切选项)。
+                const cjkAround = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]$/.test(line)
+                    && /^[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/.test(r.text);
+                if (known && !cjkAround && gap > SEP_EM * Math.max(prev.size, r.size)
                     && !/\s$/.test(line) && !/^\s/.test(r.text)) line += ' ';
             }
             line += r.text;

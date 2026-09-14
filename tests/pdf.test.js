@@ -496,3 +496,21 @@ test('真文件端到端:66 题每题 4 个选项(两栏选项靠 CJK 分隔符�
     assert.strictEqual(bad.length, 0, '每题都应是 4 个选项,实际异常:' +
         bad.slice(0, 3).map(q => q.content.slice(0, 14) + '→' + Object.keys(q.options).join('')).join(' | '));
 });
+
+test('汉字之间不补空格(两端对齐拉开字距也不补);拉丁词之间照补', async () => {
+    const widthArr = Array.from({ length: 100 }, () => 500).join(' ');
+    const font = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 0 /LastChar 99 /Widths [${widthArr}] >>`;
+    // 两个片段同属一行,中间留了 1.2 em 的空隙
+    const latin = await pdfToText(onePagePdf('BT /F1 10 Tf 60 700 Td (AAAA) Tj 32 0 Td (BBBB) Tj ET', { fontDict: font }));
+    assert.strictEqual(latin.text, 'AAAA BBBB', '拉丁词之间要补空格,实际:' + JSON.stringify(latin.text));
+    // 汉字:即便空隙很大也不补(中文没有词间空格)
+    const cmap = cjkCMap('甲乙丙丁戊己庚辛');
+    const cjk = await pdfToText(onePagePdf('BT /F1 10 Tf 60 700 Td <75324E59> Tj 32 0 Td <4E19> Tj ET', {
+        fontDict: '<< /Type /Font /Subtype /Type0 /BaseFont /SimSun /Encoding /Identity-H /DescendantFonts [6 0 R] /ToUnicode 7 0 R >>',
+        extraObjs: [
+            { num: 6, dict: '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /SimSun /DW 1000 >>' },
+            { num: 7, dict: `<< /Length ${Buffer.byteLength(cmap, 'latin1')} >>`, stream: cmap },
+        ],
+    }));
+    assert.ok(!/ /.test(cjk.text), '汉字之间不许出现空格,实际:' + JSON.stringify(cjk.text));
+});
