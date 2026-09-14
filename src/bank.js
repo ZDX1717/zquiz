@@ -152,7 +152,7 @@ function readFileIntoBox(file) {
         file.arrayBuffer()
             .then(buf => docxToText(buf))
             .then(text => fillBox(text, 'Word 文档'))
-            .catch(err => showImportStatus(`docx 读取失败：${err && err.message ? err.message : '文件可能损坏'}（老版 .doc 请另存为 .docx，或复制文字粘贴）`, 'error'));
+            .catch(err => showImportStatus(`docx 读取失败：${err && err.message ? err.message : '文件可能损坏'}。可改存为 .txt,或直接复制文字粘贴`, 'error'));
         return;
     }
 
@@ -250,16 +250,16 @@ function showUnreadableFileNotice(isPdf) {
             '<b>📄 PDF 不能直接读，两个办法：</b>' +
             '<div class="file-notice-actions"><button type="button" id="file-ai-copy-btn" class="action-btn secondary">① 📋 复制提示词，去豆包/Kimi 让 AI 提取</button></div>' +
             '<p class="file-notice-hint">① 步骤：点上方按钮复制提示词 → 打开豆包 / Kimi / DeepSeek → <b>把 PDF 文件附到对话里</b> → 粘贴提示词发送 → 把 AI 回复全文粘回输入框。注意：此法会把材料上传给该 AI 服务。</p>' +
-            '<p class="file-notice-hint">② 不想用 AI：直接在 PDF 里选中文字复制，粘贴到输入框（任何格式通用）。</p>',
+            '<p class="file-notice-hint">② 不想用 AI：直接在 PDF 里选中文字，粘到输入框就行。</p>',
             'warning'
         );
         return;
     }
     showFileNotice(
         '<b>📄 老版 .doc 不能直接读，两个办法：</b>' +
-        '<p class="file-notice-hint">① <b>转格式（推荐）</b>：用 Word / WPS 打开 → 另存为 <b>.docx</b> → 回来重新选择文件，文字会自动读进输入框。</p>' +
-        '<p class="file-notice-hint">② <b>复制文字</b>：直接在 .doc 里选中文字复制，粘贴到输入框（任何格式通用）。</p>' +
-        '<p class="file-notice-hint">提示：转成 .docx 导入后若格式仍乱，预览页有「🤖 AI 格式整理(不改内容)」一键清理；连题目都认不出时，下面那句「解析不出来？」里的 AI 整理路径也能把原文理顺。</p>',
+        '<p class="file-notice-hint">① <b>首选转格式</b>：用 Word / WPS 打开 → 另存为 <b>.docx</b> → 回来重新选择文件，文字会自动读进输入框。</p>' +
+        '<p class="file-notice-hint">② <b>复制文字</b>：直接在 .doc 里选中文字，粘到输入框就行。</p>' +
+        '<p class="file-notice-hint">提示：转成 .docx 后若格式仍乱，预览页的 AI 整理可一键清理；认不出题目就用下面「解析不出来？」这条路。</p>',
         'warning'
     );
 }
@@ -707,7 +707,7 @@ export async function rescueAiOrganize() {
     try {
         const { text, chunks } = await aiFormatMaterial(cfg, material, {
             signal,
-            onProgress: (done, total) => showImportStatus(`🤖 AI 整理中（${done}/${total} 块）…再点一次按钮可取消`, 'success'),
+            onProgress: (done, total) => showImportStatus(`🤖 AI 整理中 ${done}/${total} 块…再点一次按钮可取消`, 'success'),
         });
         const parsed = parseQuestionsText(text);
         recordAiUsage({ trigger: 'rescue-organize', chunks, aiQuestions: parsed.length });
@@ -725,12 +725,14 @@ export async function rescueAiOrganize() {
         pendingSourceLabel = '';
         pasteInput.value = text;
         lastRawContent = text;
-        showImportStatus(`✅ AI 已整理出 ${parsed.length} 题（${chunks} 块原文），已放进输入框——过目后点「解析并预览」`, 'success');
+        showImportStatus(`✅ AI 已整理出 ${parsed.length} 题 · ${chunks} 块原文,已放进输入框 —— 过目后点「解析并预览」`, 'success');
     } catch (e) {
         if (e && /取消/.test(e.message)) {
             showImportStatus('已取消 AI 整理', 'warning');
         } else {
-            showImportStatus('AI 整理失败：' + (e.message || e) + '（可改用左边 A 路线）', 'error');
+            // 同"没整理出题目"那一支:整理失败也只能走手动路,而配了 Key 时手动那条是隐藏的 → 先切回来
+            showImportStatus('AI 整理失败：' + (e.message || e) + ' —— 已切到手动方式:点「📋 复制提示词和题目」发给聊天 AI', 'error');
+            if (aiRescuePanel && aiRescuePanel.classList) aiRescuePanel.classList.remove('auto-ready');
         }
     } finally {
         rescueAiRunning = false;
@@ -1192,7 +1194,7 @@ function commitSeparateImport() {
 export function restoreOverwriteSnapshot() {
     const snap = loadOverwriteSnapshot();
     if (!snap) {
-        showImportStatus('没有可恢复的覆盖前快照（仅覆盖导入时自动生成）', 'error');
+        showImportStatus('没有可恢复的快照 —— 只有"覆盖导入"时会自动存一版', 'error');
         return;
     }
     if (!state.questionBanks[snap.bank]) {
@@ -1208,7 +1210,7 @@ export function restoreOverwriteSnapshot() {
     saveToLocalStorage();
     updateBankSelect();
     updateBanksList();
-    showImportStatus(`已恢复覆盖前快照：${snap.bank}（${snap.questions.length} 题）`, 'success');
+    showImportStatus(`已恢复覆盖前快照：${snap.bank} · ${snap.questions.length} 题`, 'success');
 }
 
 // 预览一键"只保留无警告题"(单向过滤,被滤掉的仍可手动勾回)

@@ -391,7 +391,7 @@ test('文件流程:PDF 给 AI 提取入口 + 隐私说明;.doc 走"转格式 / �
     const pdfNotice = String(elements['import-status'].innerHTML);
     assert.ok(pdfNotice.includes('file-ai-copy-btn'), 'PDF 要给"复制提示词去 AI 提取"的入口');
     assert.ok(pdfNotice.includes('上传给该 AI 服务'), 'PDF 走 AI 要把隐私说清');
-    assert.ok(pdfNotice.includes('选中文字复制'), 'PDF 还要给不用 AI 的那条路');
+    assert.ok(pdfNotice.includes('选中文字'), 'PDF 还要给不用 AI 的那条路');
     run(`handleFileSelect({ target: { files: [{ name: '卷子.doc' }] } })`);
     const docNotice = String(elements['import-status'].innerHTML);
     assert.ok(docNotice.includes('另存为') && docNotice.includes('.docx'), '.doc 首选"另存为 .docx 再选一次"');

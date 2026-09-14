@@ -295,7 +295,7 @@ test('统一导入管道回归:PDF 选择 → 双选项提示(AI 提取按钮+�
     const docNotice = String(notice.innerHTML);
     assert.ok(!docNotice.includes('file-ai-copy-btn'), '.doc 不应出现 AI 提取按钮');
     assert.ok(docNotice.includes('另存为') && docNotice.includes('.docx'), '① 必须是转格式');
-    assert.ok(docNotice.includes('选中文字复制'), '② 必须是复制文字');
+    assert.ok(docNotice.includes('选中文字'), '② 必须是复制文字');
     run(`lastRawContent = '旧的残留原文'`);
     notice._listeners.click({ target: { id: 'file-ai-copy-btn' } });
     await new Promise(r => setTimeout(r, 0));

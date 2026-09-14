@@ -324,6 +324,21 @@ test('救援区:只铺一条路 + 文案有预算(👤 2026-09-13 报"太啰嗦�
     }
 });
 
+test('首页主卡片与救援区:文案里不许再塞括号补充(👤 2026-09-13:"去掉括号里的废话")', () => {
+    // 👤 点名的三处:（网页 / 微信 / Word 直接复制）（只改格式，不改内容）（材料里没答案的题留空）
+    // 规律:括号里的补充说明基本都是"写了也没人看"的废话;要说的信息就直说,别往括号里塞。
+    // ⚠️ 例外:格式示例那段 <pre> 里的括号是**语法本身**(如"……（B）""（多选连写：答案：ABC）"),必须保留。
+    const card = html.slice(html.indexOf('operation-card home-import'),
+        html.indexOf('</details>', html.indexOf('id="ai-rescue"')));
+    const noPre = card.replace(/<pre>[\s\S]*?<\/pre>/g, '');
+    const text = noPre.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '|');
+    const offenders = text.split('|').map(t => t.trim()).filter(t => /[（(][^）)]*[）)]/.test(t));
+    assert.deepStrictEqual(offenders, [], '首页文案里不许有括号补充,实际:\n' + offenders.join('\n'));
+    // 顺带:提示词也不能靠括号补信息(它最容易又长回去)
+    const ph = (html.match(/id="paste-input"[^>]*placeholder="([^"]*)"/) || [])[1] || '';
+    assert.ok(!/[（(]/.test(ph), '提示词里不许有括号,实际:' + ph);
+});
+
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {
     const cssText = String(cssNoComments);
     for (const sel of ['#home-section > .operation-card', '#banks-section > .banks-list']) {
