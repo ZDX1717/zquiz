@@ -245,16 +245,46 @@ export function scanObjects(latin1) {
             // 去掉流数据尾部的换行(它不属于数据)
             while (streamEnd > streamStart && (latin1[streamEnd - 1] === '\n' || latin1[streamEnd - 1] === '\r')) streamEnd--;
         }
-        objects.set(num, { num, dict, streamStart, streamEnd, raw: body });
+        // ⚠️ 除 dict 外还要留 value:PDF 里 `12 0 obj 133 endobj` 这种"裸数字对象"到处都是
+        //    (`/Length 3 0 R` 就指向它),只留 dict 的话间接长度永远解析不出来
+        objects.set(num, { num, value: parsed.value, dict, streamStart, streamEnd, raw: body });
         re.lastIndex = endIdx === -1 ? latin1.length : endIdx;
     }
     return objects;
 }
 
+// 扫描期只能处理**直接数字**的 /Length;间接的(`/Length 3 0 R`)要等所有对象都扫完再回头精修。
+// 真实文件里间接长度非常常见(实测 W3C 的 dummy.pdf 就是),不修的话流会多切/少切几个字节,
+// zlib 直接报错 → 表现成"这份 PDF 读不出文字"。
+function resolveNumber(v, objects) {
+    const direct = numberOf(v);
+    if (direct !== null) return direct;
+    const n = refNumOf(v);
+    if (n === null) return null;
+    const target = objects.get(n);
+    return target ? numberOf(target.value) : null;
+}
+
+export function refineStreamBounds(latin1, objects) {
+    let fixed = 0;
+    for (const obj of objects.values()) {
+        if (obj.streamStart < 0) continue;
+        if (numberOf(obj.dict.Length) !== null) continue;      // 直接数字:扫描期已定
+        const len = resolveNumber(obj.dict.Length, objects);
+        if (len === null || len <= 0) continue;
+        const end = obj.streamStart + len;
+        if (end <= latin1.length && /^[\r\n]*endstream/.test(latin1.slice(end, end + 16))) {
+            obj.streamEnd = end;
+            fixed++;
+        }
+    }
+    return fixed;
+}
+
 // 解流:按 /Filter 依次处理。返回 Uint8Array;不支持的类型返回 null(调用方跳过)。
 export async function decodeStream(latin1, streamStart, streamEnd, dict) {
     if (streamStart < 0 || streamEnd <= streamStart) return null;
-    let data = latin1ToBytes(latin1.slice(streamStart, streamEnd));
+    const raw = latin1.slice(streamStart, streamEnd);
     const filters = [];
     const f = dict && dict.Filter;
     if (f) {
@@ -262,15 +292,37 @@ export async function decodeStream(latin1, streamStart, streamEnd, dict) {
         if (arr) arr.forEach(x => { const n = nameOf(x); if (n) filters.push(n); });
         else { const n = nameOf(f); if (n) filters.push(n); }
     }
-    for (const name of filters) {
-        if (name === 'FlateDecode' || name === 'Fl') data = await inflate(data);
-        else if (name === 'ASCIIHexDecode' || name === 'AHx') data = asciiHexDecode(data);
-        else if (name === 'ASCII85Decode' || name === 'A85') data = ascii85Decode(data);
-        else if (name === 'DCTDecode' || name === 'JPXDecode' || name === 'CCITTFaxDecode' || name === 'JBIG2Decode') return null;  // 图片流:不是文本
-        else if (name === 'LZWDecode') return null;      // 极罕见,不值得为它写 LZW
-        else return null;                                 // 未知过滤器:宁可跳过,不要吐垃圾
+    // 对不认识的过滤器直接放弃 —— 宁可少抽,不要吐垃圾
+    if (filters.some(n => !['FlateDecode', 'Fl', 'ASCIIHexDecode', 'AHx', 'ASCII85Decode', 'A85'].includes(n))) return null;
+
+    // 🚨 两种切法都试:按 endstream 兜底时,数据尾部的 0x0A **可能本身就是数据**
+    //    (zlib 校验和正好以 0x0A 结尾),把它当"endstream 前的换行"切掉会让解压直接失败 ——
+    //    真实文件上实测踩到过。所以先按原样解,失败再试去掉尾部换行的版本。
+    const variants = [raw];
+    const trimmed = raw.replace(/[\r\n]+$/, '');
+    if (trimmed !== raw) variants.push(trimmed);
+    for (const candidate of variants) {
+        try {
+            let data = latin1ToBytes(candidate);
+            for (const name of filters) {
+                if (name === 'FlateDecode' || name === 'Fl') data = await inflate(data);
+                else if (name === 'ASCIIHexDecode' || name === 'AHx') data = asciiHexDecode(data);
+                else if (name === 'ASCII85Decode' || name === 'A85') data = ascii85Decode(data);
+            }
+            return data;
+        } catch (e) { /* 换下一种切法 */ }
     }
-    return data;
+    return null;
+}
+
+// 字典值可能是间接引用(`/Font 10 0 R`),要能解一层
+function dictOfResolved(v, objects) {
+    const n = refNumOf(v);
+    if (n !== null) {
+        const o = objects.get(n);
+        return o ? (o.dict || dictOf(o.value)) : null;
+    }
+    return dictOf(v);
 }
 
 async function inflate(bytes) {
@@ -342,8 +394,7 @@ export async function expandObjectStreams(latin1, objects) {
             const to = i + 1 < n ? first + header[(i + 1) * 2 + 1] : text.length;
             const body = text.slice(from, to);
             const parsed = parsePdfValue(body, 0);
-            const dict = dictOf(parsed.value);
-            if (dict) extra.set(objNum, { num: objNum, dict, streamStart: -1, streamEnd: -1, raw: body, fromObjStm: true });
+            extra.set(objNum, { num: objNum, value: parsed.value, dict: dictOf(parsed.value) || {}, streamStart: -1, streamEnd: -1, raw: body, fromObjStm: true });
         }
     }
     for (const [k, v] of extra) if (!objects.has(k)) objects.set(k, v);
@@ -417,7 +468,9 @@ async function buildFontTable(latin1, objects) {
     }
     // 资源名 -> 字体:遍历所有 /Font << /F1 12 0 R >> 字典
     const linkResources = (resDict) => {
-        const fonts = dictOf(resDict && resDict.Font);
+        // ⚠️ 真实文件里 /Font 常是**间接引用**(`/Font 10 0 R` → `<< /F1 9 0 R >>`),
+        //    只认内联字典的话字体表永远是空的 → 中文全成乱码/读不出
+        const fonts = dictOfResolved(resDict && resDict.Font, objects);
         if (!fonts) return;
         for (const key of Object.keys(fonts)) {
             const ref = resolve(fonts[key]);
@@ -427,9 +480,7 @@ async function buildFontTable(latin1, objects) {
     for (const obj of objects.values()) {
         const d = obj.dict;
         if (!d) continue;
-        linkResources(dictOf(d.Resources) ? d.Resources : null);
-        linkResources(dictOf(d.Resources) ? null : null);
-        const res = dictOf(d.Resources);
+        const res = dictOfResolved(d.Resources, objects);   // /Resources 也可能是个引用
         if (res) linkResources(res);
     }
     return { byNum, byName };
@@ -493,10 +544,14 @@ export function extractTextFromContent(content, fontTable = { byName: new Map() 
             case 'TD': {
                 const dy = operands.length >= 2 ? operands[operands.length - 1].num : null;
                 const dx = operands.length >= 2 ? operands[operands.length - 2].num : null;
+                // Y 变了 = 换行。
+                // 🚨 只有 X 位移时**不补空格**:`Td` 是相对行首的**累积**平移,而位移里混着
+                //    "上一个 chunk 的字形推进 + 字距",没有 /Widths 就无法还原真实间隙。
+                //    真实文件实测(W3C dummy.pdf,Word 类排版):每个词被拆成好几个 Tj,
+                //    按 X 位移补空格会把 "Dummy" 切成 "Dumm y" —— 词内插空格比词间少空格更伤,
+                //    所以这里一律不补;词间空格交给文本里的空格字符与 TJ 的位移(阈值见下)。
                 if (typeof dy === 'number' && (lastY === null || Math.abs(dy) > 0.1)) {
-                    pendingBreak = true;                        // Y 变了 = 换行
-                } else if (typeof dx === 'number' && Math.abs(dx) > 0.1 && out.length) {
-                    pushText(' ');                              // 只在 X 上推进 = 词间距
+                    pendingBreak = true;
                 }
                 if (typeof dy === 'number') lastY = dy;
                 if (typeof dx === 'number') lastX = dx;
@@ -524,7 +579,9 @@ export function extractTextFromContent(content, fontTable = { byName: new Map() 
                 const arr = arrayOf(last() && last().items ? last().items : null) || (last() && last().items) || [];
                 for (const item of arr) {
                     if (typeof item.str === 'string') pushText(decodeString(item.str));
-                    else if (typeof item.num === 'number' && item.num < -100) pushText(' ');   // 大负位移 = 空格
+                    // TJ 的位移单位是 1/1000 em:词间距通常 250~330,字距 ≤150。
+                    // 阈值取 -200:既能补出词间空格,又不会把字距当空格(实测 -100 会把英文词拆开)
+                    else if (typeof item.num === 'number' && item.num < -200) pushText(' ');
                 }
                 break;
             }
@@ -707,6 +764,7 @@ export async function pdfToText(arrayBuffer) {
     }
     const objects = scanObjects(latin1);
     if (!objects.size) throw new Error('PDF 结构异常,没找到任何内容对象');
+    refineStreamBounds(latin1, objects);            // 间接 /Length 要等对象齐了才算得出
     await expandObjectStreams(latin1, objects);
     const fontTable = await buildFontTable(latin1, objects);
     const { text, pages } = await collectContentText(latin1, objects, fontTable);

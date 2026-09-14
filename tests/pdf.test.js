@@ -4,6 +4,7 @@
 // ② 仓库里不留二进制垃圾;③ 造出来的字节流走的是与真实文件同一条解析路径。
 import test from 'node:test';
 import assert from 'node:assert';
+import zlib from 'node:zlib';   // 造压缩流/算长度(合成 PDF 用)
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -243,4 +244,37 @@ test('PDF 提示的四种原因各有各的替代路(不能一句"读不了"打�
     assert.ok(enc.length > 0, '应有 encrypted 分支');
     assert.ok(!/file-ai-copy-btn/.test(enc), '加密件不该出现 AI 提取按钮');
     assert.ok(/密码/.test(enc), '要说清是密码问题');
+});
+
+// ---------- 真实世界结构(拿 W3C dummy.pdf 这类真文件踩出来的三条) ----------
+test('间接 /Length + 间接 /Font:真文件最常见的两个"看起来读不出文字"的原因', async () => {
+    // 真实文件:`/Length 3 0 R`(裸数字对象),`/Resources << /Font 10 0 R >>`(资源再间接一层)
+    const content = 'BT /F1 12 Tf 72 720 Td (Indirect everywhere) Tj ET';
+    const objs = [
+        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
+        { num: 2, dict: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>' },
+        { num: 3, dict: '<< /Type /Page /Parent 2 0 R /Resources 11 0 R /Contents 4 0 R >>' },
+        { num: 4, dict: `<< /Length 5 0 R /Filter /FlateDecode >>`, stream: content, compress: true },
+        { num: 5, dict: String(zlib.deflateSync(Buffer.from(content, 'latin1')).length) },   // 裸数字对象
+        { num: 9, dict: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>' },
+        { num: 10, dict: '<< /F1 9 0 R >>' },                                               // 字体资源字典
+        { num: 11, dict: '<< /Font 10 0 R /ProcSet [/PDF /Text] >>' },                       // 资源字典
+    ];
+    const { text, gate } = await pdfToText(buildPdf(objs));
+    assert.ok(text.includes('Indirect everywhere'),
+        '间接 /Length 与间接 /Font 都要能解开,实际:' + JSON.stringify(text) + ' / ' + JSON.stringify(gate));
+});
+
+test('词被拆成多个 Tj:Td 的 X 位移**不补空格**(否则英文词会被切开)', async () => {
+    const content = 'BT /F1 12 Tf 56 758 Td (Dumm) Tj 50.1 0 Td (y) Tj 9 0 Td ( ) Tj 4.4 0 Td (PDF) Tj ET';
+    const { text } = await pdfToText(onePagePdf(content));
+    assert.strictEqual(text, 'Dummy PDF', '实际:' + JSON.stringify(text));
+    assert.ok(!/Dumm y/.test(text), '词内不许被切出空格');
+});
+
+test('TJ 位移阈值:250(词间距)补空格,100(字距)不补', async () => {
+    const pdf = onePagePdf('BT /F1 12 Tf 72 720 Td [(word) -250 (gap)] TJ T* [(kern) -100 (ing)] TJ ET');
+    const { text } = await pdfToText(pdf);
+    assert.ok(text.includes('word gap'), '词间距要补空格,实际:' + JSON.stringify(text));
+    assert.ok(text.includes('kerning'), '字距不许补空格,实际:' + JSON.stringify(text));
 });
