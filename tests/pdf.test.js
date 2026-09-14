@@ -542,3 +542,23 @@ test('detectRepeatedPhrase 仍可用于诊断(不参与闸门:目录点线会误
     assert.strictEqual(detectRepeatedPhrase('考点1 刷题……………… 1\n考点2 刷题……………… 7'), null,
         '目录点线这种短片段不该被判成水印');
 });
+
+test('每行都重复的叠加文字(水印/页眉)会被清掉;正文不受影响', async () => {
+    // 思路借鉴 docling(DS4SD,MIT)的"重复文本清理":重复出现的固定文字不是正文。
+    // 判据改成几何 + 句子级双确认:同字同位出现在 ≥3 行 → 候选;候选按行拼成的句子在多行重复 → 丢。
+    const widthArr = Array.from({ length: 100 }, () => 500).join(' ');
+    const font = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 0 /LastChar 99 /Widths [${widthArr}] >>`;
+    const line = (body, tail) => `BT /F1 10 Tf 60 700 Td (${body}) Tj 400 0 Td (${tail}) Tj ET`;
+    // 三行正文各不相同,但每行末尾都跟着同一句"页脚水印"
+    const content = [
+        line('AAAA', 'WATERMARK'),
+        'BT /F1 10 Tf 60 686 Td (BBBB) Tj 400 0 Td (WATERMARK) Tj ET',
+        'BT /F1 10 Tf 60 672 Td (CCCC) Tj 400 0 Td (WATERMARK) Tj ET',
+        'BT /F1 10 Tf 60 658 Td (DDDD) Tj ET',
+        'BT /F1 10 Tf 60 644 Td (EEEE) Tj ET',
+    ].join('\n');
+    const { text, stats } = await pdfToText(onePagePdf(content, { fontDict: font }));
+    assert.ok(stats.removedOverlay > 0, '应识别并清掉重复的叠加文字,实际清了 ' + stats.removedOverlay);
+    assert.ok(!/WATERMARK/.test(text), '叠加文字不该出现在结果里,实际:' + JSON.stringify(text));
+    assert.ok(/AAAA/.test(text) && /BBBB/.test(text), '正文必须原样保留:' + JSON.stringify(text));
+});

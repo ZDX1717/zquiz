@@ -853,6 +853,7 @@ function runsToText(runs) {
     const out = [];
     let bigGap = 0;                                  // 超大字距的片段数(供闸门判"叠加层")
     for (const l of lines) {
+        l.parts = l.parts.filter(p => !p.drop);          // 已判定为水印/页眉页脚的片段
         let line = '';
         let prev = null;
         for (const r of l.parts) {
@@ -963,6 +964,54 @@ function cp1252ToUnicode(raw) {
     return s;
 }
 
+// ---------- 叠加层清理:每行都重复出现的水印/页眉页脚 ----------
+// 思路借鉴 docling(DS4SD,MIT)的"清理页眉页脚与水印":**重复出现的文字不是正文**。
+// 判据我们改成几何 + 句子级双重确认(纯文本级的"重复长句"会误伤目录点线,实测过):
+//   ① 某个片段(字)x 坐标相同,且出现在 ≥3 行 → 候选;
+//   ② 每一行里所有候选片段按 x 拼起来,若**同一句(≥6 字)在 ≥3 行出现** → 判定为叠加层,整句丢弃。
+// 这样"每行都有的固定文字"(页码/页眉/水印)会被清掉,而正文里偶然同位的字(如选项字母 A)
+// 拼不成同一句,不会被误删。
+function stripRepeatedOverlay(runs) {
+    if (runs.length < 8) return 0;      // 太小就不折腾(真正的判据在后面:同句 ≥3 行)
+    const lineKeyOf = (r) => Math.round(r.stackCoord / 2) * 2;
+    const ownKey = (r) => r.text + '@' + Math.round(r.alongCoord);
+    const seenLines = new Map();
+    for (const r of runs) {
+        if (!seenLines.has(ownKey(r))) seenLines.set(ownKey(r), new Set());
+        seenLines.get(ownKey(r)).add(lineKeyOf(r));
+    }
+    const isCandidate = (r) => (seenLines.get(ownKey(r)) || { size: 0 }).size >= 3;
+
+    const byLine = new Map();
+    for (const r of runs) {
+        if (!isCandidate(r)) continue;
+        const k = lineKeyOf(r);
+        if (!byLine.has(k)) byLine.set(k, []);
+        byLine.get(k).push(r);
+    }
+    const phraseCount = new Map();
+    for (const list of byLine.values()) {
+        list.sort((a, b) => a.alongCoord - b.alongCoord);
+        const phrase = list.map(r => r.text).join('');
+        if (phrase.length >= 6) phraseCount.set(phrase, (phraseCount.get(phrase) || 0) + 1);
+    }
+    // 🚨 **要么整句清掉、要么一个不动**:只清掉一部分会让正文更乱(半句水印混在题干里),
+    //    所以要求"同一句在 ≥3 行出现,且覆盖了绝大多数候选行"才动手。
+    const candidateLines = byLine.size;
+    const overlay = new Set();
+    for (const [phrase, n] of phraseCount) {
+        if (n >= 3 && n >= candidateLines * 0.8) overlay.add(phrase);
+    }
+    if (!overlay.size) return 0;
+    let removed = 0;
+    for (const list of byLine.values()) {
+        const phrase = list.map(r => r.text).join('');
+        if (!overlay.has(phrase)) continue;
+        for (const r of list) { r.drop = true; removed++; }
+    }
+    return removed;
+}
+
 // ---------- 页面与流 ----------
 function pageContentsRefs(pageDict, objects) {
     const c = pageDict && pageDict.Contents;
@@ -974,6 +1023,7 @@ function pageContentsRefs(pageDict, objects) {
 
 async function collectContentText(latin1, objects, fontEntries, globalFonts) {
     const texts = [];
+    let removedOverlay = 0;
     const pageNums = pageOrder(objects);
     for (const pageNum of pageNums) {
         const page = objects.get(pageNum);
@@ -989,11 +1039,13 @@ async function collectContentText(latin1, objects, fontEntries, globalFonts) {
             if (data) chunks.push(bytesToLatin1(data));
         }
         if (chunks.length) {
-            const t = extractTextFromContent(chunks.join('\n'), table);
+            const pageRuns = collectRuns(chunks.join('\n'), table);
+            removedOverlay += stripRepeatedOverlay(pageRuns);
+            const t = runsToText(pageRuns);
             if (t) texts.push(t);
         }
     }
-    if (texts.length) return { text: texts.join('\n'), pages: pageNums.length };
+    if (texts.length) return { text: texts.join('\n'), pages: pageNums.length, removedOverlay };
 
     // 没有页面对象(或内容挂在别处):退化成"扫所有像内容流的流"
     const fallback = [];
@@ -1088,7 +1140,7 @@ export async function pdfToText(arrayBuffer) {
         if (base && fontEntries.has(obj.num)) globalFonts.set(base, fontEntries.get(obj.num));
     }
     for (const obj of objects.values()) linkPageFonts(obj.dict && obj.dict.Resources, objects, fontEntries, globalFonts);
-    const { text, pages } = await collectContentText(latin1, objects, fontEntries, globalFonts);
+    const { text, pages, removedOverlay } = await collectContentText(latin1, objects, fontEntries, globalFonts);
 
     let cidFontsWithoutMap = 0;
     for (const f of fontEntries.values()) {
@@ -1096,5 +1148,5 @@ export async function pdfToText(arrayBuffer) {
     }
     const cjkCount = (text.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g) || []).length;
     const gate = pdfTextGate(text, { cidFontsWithoutMap, cjkCount, bigGapRatio: lastRunStats.bigGapRatio });
-    return { text, pages, gate, stats: { objects: objects.size, cidFontsWithoutMap, cjkCount } };
+    return { text, pages, gate, stats: { objects: objects.size, cidFontsWithoutMap, cjkCount, removedOverlay } };
 }
