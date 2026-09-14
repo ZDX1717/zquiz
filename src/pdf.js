@@ -461,7 +461,11 @@ async function buildFontTable(latin1, objects) {
             const data = await decodeStream(latin1, toUni.streamStart, toUni.streamEnd, toUni.dict).catch(() => null);
             if (data) cmap = parseToUnicodeCMap(bytesToLatin1(data));
         }
-        const entry = { isCid, cmap, hasToUnicode: !!cmap, subtype };
+        // 竖排字体:PDF 用 `/Encoding /Identity-V`(或任何以 -V 结尾的编码名)声明"沿 Y 前进"。
+        // 这类字体里每个字都是一次 `Td 0 -字号`,只按 Y 变化断行会得到"一个字一行"。
+        const encName = nameOf(d.Encoding);
+        const vertical = !!encName && /-V$/.test(encName);
+        const entry = { isCid, cmap, hasToUnicode: !!cmap, subtype, vertical };
         byNum.set(obj.num, entry);
         const base = nameOf(d.BaseFont);
         if (base) byName.set(base, entry);
@@ -487,37 +491,48 @@ async function buildFontTable(latin1, objects) {
 }
 
 // ---------- 内容流:抽文本 ----------
-// 只认文本算子;按 Td/TD/T*/Tm 的 Y 变化断行 —— 足够对付"一行一题"的卷子。
+// 🚨 这里**不能**"看到 Y 变了就换行" —— 真实 PDF 的排版方式五花八门:
+//   · 每个字一次 `Td`/`Tm` 定位(Word/WPS 类),字与字之间有 0.5~2 单位的抖动;
+//   · 竖排 / 整页旋转 90° 的扫描件,字的**前进方向是 Y**,每字 Y 都变;
+//   · 真正换行时又是整个文本矩阵平移。
+//   所以先按算子收集**文本片段(run)**,带上它的起点与**前进方向**(来自文本矩阵 a,b),
+//   再按"垂直于前进方向的坐标 = 哪一行"分组。这样上面三种排版都能归成正确的行。
+//   ⚠️ 空格**只认**文本里的空格字符与 TJ 位移:没有 /Widths 就算不出片段之间的真实间隙,
+//      按起点距离补空格会把英文词切开(实测 "Dummy" → "Dumm y")。
 export function extractTextFromContent(content, fontTable = { byName: new Map() }) {
-    const out = [];
+    const runs = [];
+    let tm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };   // 文本矩阵
+    let tlm = { e: 0, f: 0 };                            // 行矩阵(Td/TD/T* 相对它移动)
+    let leading = 0;                                     // TL
+    let size = 12;                                       // 未声明 Tf 时的保守默认
     let font = null;
-    let lastY = null;
-    let lastX = null;
-    let pendingBreak = false;
+    let forced = false;                                  // 下一个片段是否强制另起一行(T* / ' / ")
 
-    const pushText = (s) => {
-        if (!s) return;
-        if (pendingBreak) { out.push('\n'); pendingBreak = false; }
-        out.push(s);
+    const pushRun = (text) => {
+        if (!text) return;
+        runs.push({ text, a: tm.a, b: tm.b, e: tm.e, f: tm.f, size, forced, vertical: !!(font && font.vertical) });
+        forced = false;
     };
+    const tlNextLine = () => { tlm.f -= leading; tm.e = tlm.e; tm.f = tlm.f; };
+
     const decodeString = (raw) => {
         const f = font;
         if (!f) return raw;                                // 不知道字体:按单字节原样出(latin1)
         if (f.cmap && f.cmap.size) {
-            let s = '';
+            let out = '';
             if (f.isCid) {
                 for (let i = 0; i + 1 < raw.length; i += 2) {
                     const code = (raw.charCodeAt(i) << 8) | raw.charCodeAt(i + 1);
-                    s += f.cmap.has(code) ? f.cmap.get(code) : '\uFFFD';
+                    out += f.cmap.has(code) ? f.cmap.get(code) : '\uFFFD';
                 }
-                if (raw.length % 2) s += '\uFFFD';
+                if (raw.length % 2) out += '\uFFFD';
             } else {
                 for (let i = 0; i < raw.length; i++) {
                     const code = raw.charCodeAt(i);
-                    s += f.cmap.has(code) ? f.cmap.get(code) : '\uFFFD';
+                    out += f.cmap.has(code) ? f.cmap.get(code) : '\uFFFD';
                 }
             }
-            return s;
+            return out;
         }
         if (f.isCid) {
             // CID 字体没带 ToUnicode:抽出来必是乱码,用替换符标记,交给闸门判定
@@ -526,74 +541,110 @@ export function extractTextFromContent(content, fontTable = { byName: new Map() 
         return cp1252ToUnicode(raw);
     };
 
-    // 词法:把内容流切成算子与操作数
     const tokens = tokenizeContent(content);
     const operands = [];
     for (const t of tokens) {
         if (t.type !== 'op') { operands.push(t); continue; }
         const last = () => operands[operands.length - 1];
+        const numAt = (i) => {
+            const v = operands[operands.length - 1 - i];
+            return v && typeof v.num === 'number' ? v.num : null;
+        };
         switch (t.value) {
+            case 'BT':
+                tm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+                tlm = { e: 0, f: 0 };
+                break;
             case 'Tf': {
-                const size = numberOf(last() && last().num !== undefined ? { num: last().num } : null);
+                const sizeNum = numAt(0);
                 const nameTok = operands[operands.length - 2];
+                if (typeof sizeNum === 'number' && sizeNum > 0) size = sizeNum;
                 if (nameTok && nameTok.name) font = fontTable.byName.get(nameTok.name) || null;
-                void size;
+                break;
+            }
+            case 'TL': {
+                const v = numAt(0);
+                if (typeof v === 'number') leading = v;
                 break;
             }
             case 'Td':
             case 'TD': {
-                const dy = operands.length >= 2 ? operands[operands.length - 1].num : null;
-                const dx = operands.length >= 2 ? operands[operands.length - 2].num : null;
-                // Y 变了 = 换行。
-                // 🚨 只有 X 位移时**不补空格**:`Td` 是相对行首的**累积**平移,而位移里混着
-                //    "上一个 chunk 的字形推进 + 字距",没有 /Widths 就无法还原真实间隙。
-                //    真实文件实测(W3C dummy.pdf,Word 类排版):每个词被拆成好几个 Tj,
-                //    按 X 位移补空格会把 "Dummy" 切成 "Dumm y" —— 词内插空格比词间少空格更伤,
-                //    所以这里一律不补;词间空格交给文本里的空格字符与 TJ 的位移(阈值见下)。
-                if (typeof dy === 'number' && (lastY === null || Math.abs(dy) > 0.1)) {
-                    pendingBreak = true;
-                }
-                if (typeof dy === 'number') lastY = dy;
-                if (typeof dx === 'number') lastX = dx;
+                const ty = numAt(0);
+                const tx = numAt(1);
+                if (typeof tx === 'number') tlm.e += tx;
+                if (typeof ty === 'number') tlm.f += ty;
+                if (t.value === 'TD' && typeof ty === 'number') leading = -ty;
+                tm.e = tlm.e; tm.f = tlm.f;
                 break;
             }
             case 'T*':
-                pendingBreak = true;
+                forced = true;
+                tlNextLine();
                 break;
             case 'Tm': {
-                const f = operands.length >= 6 ? operands[operands.length - 1].num : null;
-                if (typeof f === 'number') {
-                    if (lastY === null || Math.abs(f - lastY) > 0.1) pendingBreak = true;
-                    lastY = f;
+                const f = numAt(0), e = numAt(1), d = numAt(2), c = numAt(3), b = numAt(4), a = numAt(5);
+                if ([a, b, c, d, e, f].every(v => typeof v === 'number')) {
+                    tm = { a, b, c, d, e, f };
+                    tlm = { e, f };
                 }
                 break;
             }
             case 'Tj':
-            case "'":
-            case '"': {
-                if (t.value !== 'Tj') pendingBreak = true;      // ' 与 " 自带换行
-                if (last() && typeof last().str === 'string') pushText(decodeString(last().str));
+                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str));
                 break;
-            }
+            case "'":
+                forced = true;
+                tlNextLine();
+                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str));
+                break;
+            case '"':
+                forced = true;
+                tlNextLine();
+                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str));
+                break;
             case 'TJ': {
-                const arr = arrayOf(last() && last().items ? last().items : null) || (last() && last().items) || [];
+                const arr = (last() && last().items) || [];
                 for (const item of arr) {
-                    if (typeof item.str === 'string') pushText(decodeString(item.str));
-                    // TJ 的位移单位是 1/1000 em:词间距通常 250~330,字距 ≤150。
-                    // 阈值取 -200:既能补出词间空格,又不会把字距当空格(实测 -100 会把英文词拆开)
-                    else if (typeof item.num === 'number' && item.num < -200) pushText(' ');
+                    if (typeof item.str === 'string') pushRun(decodeString(item.str));
+                    // TJ 位移单位是 1/1000 em:词间距 250~330、字距 ≤150 → 阈值 200
+                    else if (typeof item.num === 'number' && item.num < -200) pushRun(' ');
                 }
                 break;
             }
-            case 'BT':
-                lastY = null; lastX = null; pendingBreak = false;
-                break;
             default:
                 break;
         }
         operands.length = 0;
     }
-    return out.join('').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    return runsToText(runs);
+}
+
+// 片段 → 文本:按"垂直于前进方向的坐标"分行,行内按前进方向排序
+function runsToText(runs) {
+    const lines = [];
+    let cur = null;
+    for (const r of runs) {
+        const len = Math.hypot(r.a, r.b) || 1;
+        const dx = r.a / len;
+        const dy = r.b / len;
+        // 横排:一行 = 同一个 Y,行内按 X 排;
+        // 竖排字体(Identity-V):一行(一列)= 同一个 X,列内自上而下按 Y 排。
+        const lineCoord = r.vertical ? r.e : (r.e * -dy + r.f * dx);
+        const orderCoord = r.vertical ? -r.f : (r.e * dx + r.f * dy);
+        const tol = Math.max(2, Math.abs(r.size) * 0.5);    // 半个字高以内都算同一行(容抖动)
+        const turned = cur && (Math.abs(dx - cur.dx) > 0.2 || Math.abs(dy - cur.dy) > 0.2);
+        if (!cur || r.forced || turned || cur.vertical !== r.vertical || Math.abs(lineCoord - cur.lineCoord) > tol) {
+            cur = { lineCoord, dx, dy, vertical: r.vertical, parts: [] };
+            lines.push(cur);
+        }
+        cur.parts.push({ orderCoord, text: r.text });
+    }
+    return lines
+        .map(l => l.parts.sort((x, y) => x.orderCoord - y.orderCoord).map(p => p.text).join(''))
+        .join('\n')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 // 内容流词法:只切出我们关心的东西(字符串 / 数字 / 名字 / 数组 / 算子)

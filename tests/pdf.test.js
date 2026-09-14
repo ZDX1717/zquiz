@@ -278,3 +278,63 @@ test('TJ 位移阈值:250(词间距)补空格,100(字距)不补', async () => {
     assert.ok(text.includes('word gap'), '词间距要补空格,实际:' + JSON.stringify(text));
     assert.ok(text.includes('kerning'), '字距不许补空格,实际:' + JSON.stringify(text));
 });
+
+// ---------- 「一个字一行」回归(👤 2026-09-14 反馈:能抽出字但每字一行,没法直接导入) ----------
+// 三种真实排版都会造成这个症状,判据是"抽出结果的行数",而不是看某个算子:
+//   ① 每字一次定位,字间有零点几到几单位的 Y 抖动(Word/WPS 类)
+//   ② 整页旋转 90° / 竖排:字的**前进方向是 Y**,每字 Y 都在变
+//   ③ 竖排字体 Identity-V:同样沿 Y 前进,但矩阵本身不旋转
+function lineCount(text) { return text.split('\n').filter(Boolean).length; }
+
+test('① 每字定位 + Y 抖动:同一行不许被拆开', async () => {
+    const content = 'BT /F1 12 Tf 72 720 Td (Hello) Tj 0 -0.4 Td (Wor) Tj 0 0.3 Td (ld) Tj ET';
+    const { text } = await pdfToText(onePagePdf(content));
+    assert.strictEqual(lineCount(text), 1, '抖动不该产生换行,实际:' + JSON.stringify(text));
+});
+
+test('② 旋转 90°(字沿 Y 前进):整段应合成一行', async () => {
+    const content = 'BT /F1 12 Tf 0 1 -1 0 100 100 Tm (He) Tj 0 1 -1 0 100 112 Tm (llo) Tj ET';
+    const { text } = await pdfToText(onePagePdf(content));
+    assert.strictEqual(lineCount(text), 1, '旋转文本不该一字一行,实际:' + JSON.stringify(text));
+});
+
+test('③ 竖排字体 Identity-V:一列合成一行,列与列才换行', async () => {
+    const col = '竖排文字的测试内容';       // 一列八个字
+    const other = '第二列的若干文字';
+    const content = 'BT /F1 12 Tf 0 800 Td ' + [...col].map(c => `<${cjkHex(c)}> Tj 0 -12 Td`).join(' ')
+        + ' 400 800 Td ' + [...other].map(c => `<${cjkHex(c)}> Tj 0 -12 Td`).join(' ') + 'ET';
+    const all = col + other;
+    const cmap = cjkCMap(all);
+    const pdf = buildPdf([
+        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
+        { num: 2, dict: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>' },
+        { num: 3, dict: '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>' },
+        { num: 4, dict: `<< /Length ${Buffer.byteLength(content, 'latin1')} >>`, stream: content },
+        { num: 5, dict: '<< /Type /Font /Subtype /Type0 /BaseFont /SimSun /Encoding /Identity-V /DescendantFonts [6 0 R] /ToUnicode 7 0 R >>' },
+        { num: 6, dict: '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /SimSun >>' },
+        { num: 7, dict: `<< /Length ${Buffer.byteLength(cmap, 'latin1')} >>`, stream: cmap },
+    ]);
+    const { text, gate } = await pdfToText(pdf);
+    assert.ok(text.includes(col), '一列的字要连成一行,实际:' + JSON.stringify(text));
+    assert.strictEqual(lineCount(text), 2, '两列应是两行,实际:' + JSON.stringify(text));
+    assert.strictEqual(gate.ok, true, '竖排也是正常文本,不该被闸门拦:' + gate.detail);
+});
+
+test('④ 中文每字绝对定位(最常见的考试卷排版):仍是一行,且解析器能出题', async () => {
+    const text = '题目：一年有多少个月';
+    const chars = [...text];
+    const content = 'BT /F1 12 Tf ' + chars.map((c, i) => `1 0 0 1 ${72 + i * 12} 700 Tm <${cjkHex(c)}> Tj`).join(' ') + ' ET';
+    const cmap = cjkCMap(text);
+    const pdf = buildPdf([
+        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
+        { num: 2, dict: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>' },
+        { num: 3, dict: '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>' },
+        { num: 4, dict: `<< /Length ${Buffer.byteLength(content, 'latin1')} >>`, stream: content },
+        { num: 5, dict: '<< /Type /Font /Subtype /Type0 /BaseFont /SimSun /Encoding /Identity-H /DescendantFonts [6 0 R] /ToUnicode 7 0 R >>' },
+        { num: 6, dict: '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /SimSun >>' },
+        { num: 7, dict: `<< /Length ${Buffer.byteLength(cmap, 'latin1')} >>`, stream: cmap },
+    ]);
+    const { text: out, gate } = await pdfToText(pdf);
+    assert.strictEqual(out, text, '每字绝对定位也要拼回一行,实际:' + JSON.stringify(out));
+    assert.strictEqual(gate.ok, true);
+});
