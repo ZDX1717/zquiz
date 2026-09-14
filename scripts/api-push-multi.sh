@@ -78,8 +78,18 @@ for C in "${COMMITS[@]}"; do
         fi
     done
 
-    TREE_JSON=$(jq -n --arg bt "$PARENT_API_TREE" --argjson arr "$(echo "$ENTRIES" | jq -s .)" '{base_tree:$bt, tree:$arr}')
-    API_TREE=$(echo "$TREE_JSON" | gh api "repos/$REPO/git/trees" --input - --jq '.sha')
+    if [ "${#PATHS[@]}" -eq 0 ]; then
+        # 空提交(相对父提交**没有任何文件改动**):tree 与父提交完全相同。
+        # ⚠️ 这种情况**不能**走下面的建树接口 —— `{base_tree, tree: []}` 会被 GitHub 判
+        #    "Invalid tree info"(422,实测 2026-09-14),报错完全指不到"这是个空提交"。
+        #    直接沿用父提交在 API 侧的 tree sha 即可。
+        #    用途:改动只在**仓库外**(如 /root/Zquiz 下的 目标.md)或只想重跑 CI/Pages 时,
+        #    推一个空提交把流水线踢起来。
+        API_TREE="$PARENT_API_TREE"
+    else
+        TREE_JSON=$(jq -n --arg bt "$PARENT_API_TREE" --argjson arr "$(echo "$ENTRIES" | jq -s .)" '{base_tree:$bt, tree:$arr}')
+        API_TREE=$(echo "$TREE_JSON" | gh api "repos/$REPO/git/trees" --input - --jq '.sha')
+    fi
     LOCAL_TREE=$(git rev-parse "$C^{tree}")
     [ "$API_TREE" = "$LOCAL_TREE" ] || { echo "FAIL tree $C api=$API_TREE local=$LOCAL_TREE"; exit 1; }
 
