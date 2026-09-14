@@ -117,16 +117,19 @@ body {
 header {
     background-color: var(--c-primary);
     color: #fff;
-    /* 收窄:标题栏只承载品牌 + 导航 + 主题开关 */
+    /* 收窄:标题栏只承载品牌 + 导航 + AI 状态键 + 主题开关 */
     padding: 8px 12px;
     /* 品牌 / 导航 / 主题开关同处一条(否则 nav 会作为独立一条横在标题栏与内容之间,
        形成"导入题库卡片上方一大块空白";👤 反馈实测 99px)。
-       ⚠️ 必须用 flex 而非三栏 grid:手机端 nav 是 position:fixed,会脱离文档流,
-       grid 仍会给它保留中列 → 品牌被挤半行、主题开关卡在中间(排版错乱的根因)。
-       flex 下缺席的子项自动退出排布,两种形态都成立。 */
-    display: flex;
+       ⚠️ 门道在"中间那个孩子才会真的落在正中"(👤 2026-09-14 要求把「⚙ AI 设置」放标题栏中间):
+       三栏 grid(1fr auto 1fr)两侧等宽 ⇒ 中列稳居中;flex + space-between 只均分**间隙**,
+       中项会随左右两件的宽度差被推偏(实测偏到 2/3 处)。
+       ⚠️ 但 grid 只在**桌面档**能用:手机端 nav 是 position:fixed 会脱离文档流,
+       grid 仍给它保留中列 → 品牌被挤半行、主题开关卡在中间(排版错乱的根因);
+       所以手机档(≤768px)改回 flex,让缺席的子项自动退出排布。 */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
     /* 悬浮:吸顶常驻,长列表滚动时站名与主题开关始终可达(👤 反馈);
        阴影用来与内容分层,否则同一块蓝底会看起来"粘"在内容上 */
@@ -166,6 +169,10 @@ nav {
 
 .nav-btn {
     flex: none;
+    /* 导航文字不折行:中文每个字都能断行,不写这句的话"导航的 min-content"会被算成
+       三个字各占一行那么窄 —— 标题栏左组据此收缩,实测 769~860px 处导航溢出到 AI 状态键底下。
+       写上它,导航宽度才是它真实需要的宽度,标题栏左组也才收缩不到不该缩的地方。 */
+    white-space: nowrap;
     padding: 6px 12px;
     border: none;              /* 必须显式写:否则浏览器默认按钮边框会露成黑边 */
     background: none;
@@ -2200,6 +2207,56 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     background: var(--c-ai-connected-bg);
     font-weight: 600;
 }
+/* 品牌 + 导航的左组:标题栏左侧一整块(👤 2026-09-14)。
+   存在的理由:标题栏是 space-between,**只有正中的孩子才会落在中间**;nav 单独当孩子会被平摊,
+   AI 状态键就偏到 2/3 处。手机档 nav 是 position:fixed 会脱离本组,组内只剩品牌 —— 不影响。
+   ⚠️ 本组不许加 transform / filter / backdrop-filter:那会让 fixed 的 nav 以本组为包含块。 */
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;              /* 手机档必须能收缩(否则品牌把主题开关挤出屏幕) */
+}
+
+/* 桌面档:左组与导航都不许被压。
+   ⚠️ 为什么必须写在这里:媒体查询不加优先级,全靠源序 —— 放在文件上半部分会被上面这条
+      基规则的 `min-width: 0` 盖掉(实测踩过一次:规则明明写了却不生效)。
+   ① 左组抬到 min-content:grid 的 1fr 列按剩余空间算,平板竖屏那种"窄桌面"(769~1050px)
+      算出来的列宽比"品牌 + 导航"实际所需还窄 —— 内容会溢到 AI 状态键底下;
+   ② 导航本来就是 .header-left 的弹性子项(默认可缩),一压按钮里的字就换行
+      (实测 769px 处导航被从 236px 压到 188px、品牌小字折成两行、标题栏从 48px 涨到 54px)。
+      导航是"固定宽度的三颗按钮",宽度不是拿来伸缩的。 */
+@media (min-width: 769px) {
+    .header-left { min-width: min-content; }
+    /* 导航不缩(它是固定宽度的三颗按钮),让**品牌**去吸收"窄桌面"那几十像素的缺口:
+       品牌缩了只是小字折到第二行(标题栏 48→54px),导航缩了却是按钮里的字溢出到 AI 状态键底下。
+       实测 769~866px 这段(平板竖屏刚过断点)两个选择都出现,取前者。 */
+    header nav { flex: none; }
+}
+
+/* 品牌 + 导航的左组与主题开关:三栏 grid 的第 1 / 第 3 列(第 2 列 = AI 状态键)。
+   `.theme-switch { justify-self: end }` 早先就写在品牌那条旁边,这里正是它的用武之地。 */
+
+/* 标题栏中间的 AI 状态键(👤 2026-09-14 从导入卡片挪来)。
+   ⚠️ 蓝底标题栏上不能沿用卡片的描边样式(白底描边在蓝底上像一块脏补丁)——改用半透明白胶囊,
+   与 nav 的未选中态同一套观感;连上以后沿用站内的"已连接"绿(暗色下自动切深色令牌)。 */
+.header-ai {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.38);
+    color: #fff;
+}
+.header-ai:hover { background: rgba(255, 255, 255, 0.24); }
+.header-ai.ai-connected {
+    background: var(--c-ai-connected-bg);
+    border-color: var(--c-success-deep);
+    color: var(--c-ai-connected-text);
+}
+
 /* ⚠️ `.card-head` 是 space-between:放进第三个孩子,三者会被**平摊**(标题左、中间、右)。
    多个行内控件必须**包一组**,才一起贴右(与题库页 `.banks-header-actions` 同一手法)。 */
 .card-head-actions {
@@ -2474,9 +2531,16 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     body {
         padding: 0;
     }
-    /* 手机全出血:标题栏吸到屏幕顶 */
+    /* 手机全出血:标题栏吸到屏幕顶;布局从三栏 grid 退回 flex ——
+       nav 在手机档是底部固定条(position:fixed),grid 会给它保一列,
+       于是品牌被挤半行、主题开关卡中间(👤 反馈过的排版错乱)。见 header 规则的注释。 */
     header {
         top: 0;
+        display: flex;
+        justify-content: space-between;
+        /* 手机档把列间距收到 8px:标题栏里现在是"品牌 + AI 状态键 + 主题开关"三件,
+           12px 间距在 360px 屏上正好差几像素 —— 品牌小字被挤到第二行(标题栏 40→54px)。 */
+        gap: 8px;
     }
     .container {
         max-width: 100%;
@@ -2602,6 +2666,9 @@ span.nav-ico svg.nav-ico, svg.nav-ico { width: 16px; height: 16px; display: bloc
         background: var(--c-surface);
         border-bottom: none;
     }
+    /* 标题栏里的 AI 状态键:窄屏再收一档,免得把品牌挤掉 */
+    .header-ai { padding: 3px 7px; font-size: 11px; }
+
     /* 内容区给底部栏让位(栏高约 54px + 安全区) */
     main {
         padding-bottom: calc(70px + env(safe-area-inset-bottom));

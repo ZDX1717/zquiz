@@ -792,7 +792,7 @@ export async function rescueAiOrganize() {
     }
     const cfg = normalizeAiConfig(loadAiConfig());
     if (!aiConfigReady(cfg)) {
-        showImportStatus('还没有配置 AI 接口：点右上角「⚙ AI 设置」，配置并测试连接后即可使用', 'warning');
+        showImportStatus('还没有配置 AI 接口：点标题栏中间的「⚙ AI 设置」，配置并测试连接后即可使用', 'warning');
         openAiSettings();
         return;
     }

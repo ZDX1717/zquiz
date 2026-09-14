@@ -20,11 +20,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1086">
+    <link rel="stylesheet" href="styles.css?v=1089">
 </head>
 <body>
     <div class="container">
         <header>
+            <!-- 品牌 + 导航包一组放左边(👤 2026-09-14 把「⚙ AI 设置」放到标题栏中间之后的必然结果):
+                 ⚠️ 标题栏是 flex + space-between,**中间那个孩子才会落在正中**。
+                    nav 若仍是独立孩子,四个孩子平摊,AI 键会偏到 2/3 处,不是"中间"。
+                    包成一组后:左组 | AI 状态键(正中) | 主题开关,桌面/手机两档都成立。 -->
+            <div class="header-left">
             <h1 class="brand">
                 Zquiz
                 <small class="brand-tagline">期末周刷题助手</small>
@@ -34,6 +39,11 @@
             <button id="btn-quiz" class="nav-btn"><span class="nav-ico"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4z"/></svg></span><span class="nav-label">刷题</span></button>
             <button id="btn-banks" class="nav-btn"><span class="nav-ico"><svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg></span><span class="nav-label">题库</span></button>
             </nav>
+            </div>
+            <!-- ⚙ AI 设置 / 已连接(👤 2026-09-14 从导入卡片挪到**标题栏中间**):
+                 它是"整个 App 的 AI 配置状态",不属于导入卡片那一个模块;放标题栏正中一眼可见。
+                 手机档 nav 是底部固定条、退出文档流 ⇒ 左组只剩品牌,正中依然成立。 -->
+            <button type="button" id="ai-settings-btn" class="card-link header-ai">⚙ AI 设置</button>
             <div id="theme-switch" class="theme-switch">
                 <button type="button" data-theme-opt="auto" class="theme-opt active">自动</button>
                 <button type="button" data-theme-opt="light" class="theme-opt">亮</button>
@@ -52,10 +62,7 @@
             <div class="operation-card home-import">
                 <div class="card-head">
                     <h3>导入题库</h3>
-                    <!-- ⚠️ 两个控件包一组:`.card-head` 是 space-between —— 三个孩子会被**平摊**开
-                         (标题左、AI 设置居中、问号右),包成一组才两个一起贴右(DESIGN §3.7 的对齐口径)。 -->
                     <div class="card-head-actions">
-                        <button type="button" id="ai-settings-btn" class="card-link">⚙ AI 设置</button>
                         <!-- 「支持的题目格式」悬浮面板(👤 2026-09-13):原来是首页底部一个常驻折叠块,
                              现在收成卡片右上角的「?」——点开悬浮显示,不再占页面高度。
                              ⚠️ 与回收站同一套路(`<details>` + `[open]` 显式控制显隐,见 DESIGN §3.7):
@@ -128,7 +135,7 @@ A：选项A  B：选项B
                         <p class="rescue-route-name">一键整理</p>
                         <button type="button" id="rescue-ai-btn" class="action-btn secondary rescue-main">🤖 AI 格式整理并填入输入框</button>
                         <p class="rescue-route-hint" data-when="ready">结果自动填进输入框，不会替你编答案</p>
-                        <p class="rescue-route-hint" data-when="needkey">先在右上角 ⚙ AI 设置 里配 Key</p>
+                        <p class="rescue-route-hint" data-when="needkey">先在标题栏中间的 ⚙ AI 设置 里配 Key</p>
                     </div>
                 </div>
             </details>
@@ -694,6 +701,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1086"></script>
+    <script type="module" src="src/main.js?v=1089"></script>
 </body>
 </html>

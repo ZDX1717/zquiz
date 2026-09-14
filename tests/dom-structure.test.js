@@ -64,6 +64,42 @@ test('品牌块:logo + 右下小字,tagline 是 h1 的嵌套 small', () => {
     assert.ok(/<small class="brand-tagline">期末周刷题助手<\/small>/.test(header), 'tagline 应是 h1 内的 small');
 });
 
+test('「⚙ AI 设置」住在标题栏正中(👤 2026-09-14 从导入卡片挪来)', () => {
+    // ① 位置:header 里的**第二个孩子**(中间那一格),且在品牌/导航左组之后、主题开关之前。
+    //    ⚠️ 靠 flex/grid 的**顺序**定位 —— 只有正中的孩子才会真的落在正中。
+    const headerOpen = html.indexOf('<header>');
+    const header = html.slice(headerOpen, html.indexOf('</header>'));
+    const aiIdx = header.indexOf('id="ai-settings-btn"');
+    assert.ok(aiIdx > -1, '⚙ AI 设置应在 header 内');
+    assert.ok(aiIdx > header.indexOf('</nav>'), '应在品牌 + 导航左组之后');
+    assert.ok(aiIdx < header.indexOf('id="theme-switch"'), '应在主题开关之前(即正中)');
+    assert.strictEqual((html.match(/id="ai-settings-btn"/g) || []).length, 1, '只能有一个');
+
+    // ② 桌面档:header 必须三栏等宽(grid 1fr auto 1fr) —— 两侧等宽,中列才稳居中。
+    //    flex + space-between 只均分**间隙**,中项会随左右两件宽度差被推偏(实测偏到 2/3 处)。
+    const headerRule = cssNoComments.match(/^header\s*\{[^}]*\}/m)[0];
+    assert.ok(/display\s*:\s*grid/.test(headerRule), '桌面档 header 应是 grid(三栏)');
+    assert.ok(/grid-template-columns\s*:\s*1fr\s+auto\s+1fr/.test(headerRule), '两侧等宽的中列布局');
+
+    // ③ 手机档必须退回 flex:nav 是 position:fixed 会脱离文档流,grid 仍给它保一列 →
+    //    品牌被挤半行、主题开关卡中间(👤 反馈过的排版错乱)。取最后一条 header 规则(手机档在文件末尾)。
+    const mobileHeaders = [...cssNoComments.matchAll(/header\s*\{[^}]*\}/g)].map((m) => m[0]);
+    assert.ok(mobileHeaders.some((r) => /display\s*:\s*flex/.test(r)), '手机档 header 要退回 flex');
+
+    // ④ 回归:桌面档覆盖规则(`min-width: min-content` / `nav { flex: none }`)必须写在
+    //    `.header-left` **基规则之后** —— 媒体查询不加优先级,全靠源序;
+    //    写在前面会被基规则的 min-width:0 盖掉(踩过一次:规则写了却不生效)。
+    const baseIdx = cssNoComments.indexOf('.header-left {');
+    const overrideIdx = cssNoComments.indexOf('.header-left { min-width: min-content; }');
+    assert.ok(baseIdx > -1 && overrideIdx > baseIdx, '桌面档覆盖必须排在基规则之后(源序)');
+
+    // ⑤ 导航不吃压缩:中文每个字都能断行,不给 nowrap 的话导航宽度会被算得极窄,
+    //    标题栏左组据此收缩,769~860px 处导航溢出到 AI 状态键底下(实测重叠 35px)。
+    const navBtnRule = cssNoComments.match(/\.nav-btn\s*\{[^}]*\}/)[0];
+    assert.ok(/white-space\s*:\s*nowrap/.test(navBtnRule), '导航按钮文字不许折行');
+    assert.ok(/header nav\s*\{[^}]*flex\s*:\s*none/.test(cssNoComments), '导航宽度不参与伸缩');
+});
+
 test('开始刷题按钮必须全屏宽隐藏(不能只写在手机媒体查询里)', () => {
     // 回归:该规则原先只写在 @media (max-width:768px) 内,
     // 导致桌面上"结果页上方还挂着一个开始刷题按钮"(👤 反馈)。
@@ -214,11 +250,17 @@ test('首页「?」= 支持的题目格式悬浮面板(👤 2026-09-13:去掉底
     const textareaIdx = home.indexOf('id="paste-input"');
     assert.ok(headIdx > -1 && helpIdx > headIdx && helpIdx < textareaIdx,
         '「?」应在导入卡片的头部(输入框模块右上角),不是页面底部');
-    assert.ok(helpIdx > home.indexOf('id="ai-settings-btn"'),
-        '「?」应排在「⚙ AI 设置」右侧 —— 那一行才是右上角');
+    // 👤 2026-09-14:⚙ AI 设置挪去标题栏了,卡头右上角只剩「?」
+    assert.ok(!home.includes('id="ai-settings-btn"'), '⚙ AI 设置已移到标题栏,不该再在首页卡片里');
+    // 新家 = 标题栏(header),且必须在 nav 之后:桌面档靠 flex 顺序落在中右区,
+    // 手机档 nav 变底部固定条退出文档流 ⇒ 它自然被挤到正中(👤 要的"标题栏中间")。
+    const aiIdx = html.indexOf('id="ai-settings-btn"');
+    assert.ok(aiIdx > html.indexOf('<header') && aiIdx < html.indexOf('</header>'),
+        '⚙ AI 设置应在标题栏(header)里,不该留在 <main> 的卡片里');
+    assert.ok(aiIdx > html.indexOf('</nav>'), '⚙ AI 设置应在导航之后、主题开关之前');
     // ② ⚠️ 两个行内控件必须包一组:`.card-head` 是 space-between,三个孩子会被平摊到左/中/右
     const actions = home.slice(home.indexOf('class="card-head-actions"'), home.indexOf('id="format-help-btn"'));
-    assert.ok(actions.includes('ai-settings-btn'), '「⚙ AI 设置」与「?」应在同一个 .card-head-actions 组里');
+    assert.ok(!actions.includes('ai-settings-btn'), '⚙ AI 设置已挪走,不该还在卡头动作组里');
     assert.ok(/\.card-head-actions\s*\{[^}]*display\s*:\s*flex/.test(cssNoComments),
         '.card-head-actions 应是 flex 行');
     // ③ 内容搬过来了(格式说明的正文不许丢)
