@@ -342,28 +342,39 @@ test('解析不出题目 → 提示 + 自动展开「AI 格式整理」救援区
         '解析不出来必须**自动展开**救援区 —— 光提示"上方有…"而那段是收起的,等于什么都没给');
     assert.ok(!/复制官方提示词/.test(String(st.textContent)),
         '不许再引用界面上不存在的名字「复制官方提示词」');
-    assert.ok(/AI 格式整理/.test(String(st.textContent)), '提示要点名救援区里真正能点的按钮');
+    assert.ok(/AI 整理成标准格式/.test(String(st.textContent)),
+        '提示要点名那个区的**新名字**(👤 2026-09-13 定名),实际:' + st.textContent);
     // 👤 2026-09-13:状态行**只报"出了什么事 + 往哪走"**,不许再把救援区的按钮逐个念一遍
     // (救援区就在下面且自动展开,复述一遍只会变成一堵字)
     assert.ok(String(st.textContent).length <= 32,
         '失败提示要短(≤32 字),实际 ' + String(st.textContent).length + ' 字:' + st.textContent);
 });
 
-test('救援区只铺一条路:没配 Key 看见"复制提示词",配了 Key 看见"一键整理"(👤 2026-09-13)', () => {
-    // ① 没配 Key(默认)→ 手动那条可见、自动那条隐藏
+test('AI 整理成标准格式:两条路都留着,按配没配 Key 只换主次', () => {
+    // 🚨 判据 = aiConfigReady(**配没配好 Key**),不是"测没测过" —— 一键整理能不能跑只看配没配。
+    // 目标:两条路都留在屏幕上(藏掉一条,用户就永远发现不了它),只换谁在主位。
+    const manual = sandbox.document.querySelector('#ai-rescue .rescue-route[data-route="manual"]');
+    const auto = sandbox.document.querySelector('#ai-rescue .rescue-route[data-route="auto"]');
+    assert.ok(manual && auto, '两条路的元素要能取到');
+
+    // ① 没配 Key(默认)→ 手动在主位
     store.set('aiConfig', JSON.stringify({ providerId: 'zhipu', apiKey: '', baseUrl: '', model: '' }));
     run('updateAiSettingsBadge()');
     assert.strictEqual(elements['ai-rescue']._classes.has('auto-ready'), false, '没配 Key 不该打 auto-ready');
-    // ② 配好 Key → 反过来
+    assert.strictEqual(manual._classes.has('is-primary'), true, '没配 Key:复制提示词那条应在主位');
+    assert.strictEqual(auto._classes.has('is-primary'), false, '没配 Key:一键整理应退居次席');
+
+    // ② 配好 Key → 主次对调
     store.set('aiConfig', JSON.stringify({ providerId: 'zhipu', apiKey: 'k-123', baseUrl: '', model: '' }));
     run('updateAiSettingsBadge()');
     assert.strictEqual(elements['ai-rescue']._classes.has('auto-ready'), true, '配好 Key 应打 auto-ready');
-    // ③ 两条路各自标了 data-route(CSS 的切换规则挂在它上面;样式断言在 dom-structure.test.js)
+    assert.strictEqual(auto._classes.has('is-primary'), true, '配好 Key:一键整理应在主位');
+    assert.strictEqual(manual._classes.has('is-primary'), false, '配好 Key:复制提示词应退居次席');
+
+    // ③ 两条路都在 DOM 里,且没有任何一条被 display:none 藏掉(样式断言在 dom-structure.test.js)
     const sec = HTML_SRC.slice(HTML_SRC.indexOf('id="ai-rescue"'), HTML_SRC.indexOf('</details>', HTML_SRC.indexOf('id="ai-rescue"')));
-    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'),
-        '两条路都要标 data-route,否则 CSS 的切换规则挂不上');
-    // ④ 不许再有两栏并列的老写法(1fr 1fr 会一次铺两条路,正是"重点不清楚"的来源)
-    assert.ok(!sec.includes('<h4>'), '救援区不该再有「A · 手动整理…」这类标题墙');
+    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'), '两条路都要标 data-route');
+    assert.ok(!sec.includes('<h4>'), '不该再有「A · 手动整理…」这类标题墙');
 });
 
 test('提示文案里引用的按钮名必须真实存在于界面(文案与界面不许各说各话)', () => {

@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1076">
+    <link rel="stylesheet" href="styles.css?v=1077">
 </head>
 <body>
     <div class="container">
@@ -104,27 +104,31 @@ A：选项A  B：选项B
                      **输入框这个模块** —— 挂在输入框模块的右上角才对位。 -->
             </div>
 
-            <!-- ② 补救路径:解析不出来时用 AI 把原文理顺(默认收起)
-                 👤 2026-09-13 二改:**只铺一条路**。原来的 A/B 两栏并列一共 272 字、占手机 57% 屏,
-                 每栏标题还各挂一句"——只改格式,不动内容",读完仍不知道该点哪个(👤:"太啰嗦、重点不清楚")。
-                 现在按"配没配 Key"只展示**一个**主操作(整行大按钮),另一条压成一句小字或不显示:
-                   · 没配 Key(多数人)→ 主操作 = 复制提示词(免费,谁都能走);配 Key 的提示缩成一行小字。
-                   · 配了 Key → 主操作 = 一键整理;手动那条整块隐藏。
-                 路由由 bank.js 的 updateAiSettingsBadge() 按 aiConfigReady() 打 `.auto-ready` 类,纯 CSS 切换。
-                 ⚠️ AI 一键整理失败时会把类摘掉切回手动(那时手动那条正被隐藏着,不切就点不到)。 -->
+            <!-- ② AI 整理成标准格式(👤 2026-09-13 定名 + 定口径)
+                 口径:**两条路都显示**,但按"配没配 AI Key"分主次 —— 主的那条在上、按钮整行 48px、
+                 带一句说明和浅色底;次的那条在下、按钮小一号(40px)、标签转灰。
+                 为什么两条都留着:只铺一条时,没配 Key 的人根本不知道"配了 Key 能一键整理";
+                 配了 Key 的人也看不到还有免费的手动路。两条并列 + 主次对比,才知道自己该走哪条。
+                 主次由 bank.js 的 updateAiSettingsBadge() 按 aiConfigReady() 打 `.is-primary` +
+                 `.auto-ready`(类只切换样式,不隐藏任何一条)。默认(没配 Key)手动那条在主位,写在 HTML 里,
+                 JS 没跑之前也是对的。 -->
             <details id="ai-rescue" class="home-fold">
-                <summary class="home-fold-summary">解析不出来？用 AI 把原文理顺</summary>
-                <div class="rescue-grid">
-                    <div class="rescue-col" data-route="manual">
+                <summary class="home-fold-summary">AI 整理成标准格式</summary>
+                <div class="rescue-routes">
+                    <!-- 复制提示词给聊天 AI(没配 Key 时 = 主) -->
+                    <div class="rescue-route is-primary" data-route="manual">
+                        <p class="rescue-route-name">复制提示词给聊天 AI</p>
                         <button id="copy-prompt-btn" class="action-btn secondary rescue-main">📋 复制提示词和题目</button>
-                        <p class="rescue-hint">发给豆包 / Kimi / DeepSeek → 把 AI 回复粘回上面的输入框</p>
+                        <p class="rescue-route-hint">发给豆包 / Kimi / DeepSeek，把回复粘回输入框</p>
                         <button type="button" id="prompt-toggle-btn" class="prompt-toggle">查看提示词内容 ▾</button>
                         <pre id="prompt-content" class="prompt-content hidden"></pre>
-                        <p class="rescue-alt-line">配了 AI Key？这里可以一键整理</p>
                     </div>
-                    <div class="rescue-col" data-route="auto">
+                    <!-- 一键整理(配了 AI Key 时 = 主) -->
+                    <div class="rescue-route" data-route="auto">
+                        <p class="rescue-route-name">一键整理</p>
                         <button type="button" id="rescue-ai-btn" class="action-btn secondary rescue-main">🤖 AI 格式整理并填入输入框</button>
-                        <p class="rescue-hint">结果自动填进输入框，不会替你编答案</p>
+                        <p class="rescue-route-hint" data-when="ready">结果自动填进输入框，不会替你编答案</p>
+                        <p class="rescue-route-hint" data-when="needkey">先在右上角 ⚙ AI 设置 里配 Key</p>
                     </div>
                 </div>
             </details>
@@ -690,6 +694,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1076"></script>
+    <script type="module" src="src/main.js?v=1077"></script>
 </body>
 </html>

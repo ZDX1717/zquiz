@@ -9,6 +9,7 @@ const { SourceTextModule } = vm;
 const SRC = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src');
 
 export function makeEl() {
+    const qCache = {};          // 每个元素自己的 querySelector 缓存(同一选择器返回同一桩)
     const el = {
         _listeners: {},
         addEventListener(type, fn) { this._listeners[type] = fn; },
@@ -62,7 +63,12 @@ export function makeEl() {
         // querySelectorAll 默认返回空数组;但**编辑器选项**这类"表单内容即数据来源"的场景
         // 必须能喂进去(editorCollectOptions 靠它读选项)。用 _setQueryAll 显式注入,
         // 比在桩里造真实 DOM 树便宜得多,也避免"因为读不到就放宽产品逻辑"这种坏修法。
-        querySelector: () => makeEl(),
+        // ⚠️ 按选择器缓存:同一个选择器要拿到**同一个**桩。
+        //    以前每次调用都新建一个,于是产品代码里的
+        //    `const route = document.querySelector('#ai-rescue .rescue-route[data-route="manual"]')`
+        //    在测试里**改完就丢** —— 后续 classList.toggle('is-primary') 断言不到任何东西。
+        //    真实 DOM 里同一选择器本就返回同一个节点,缓存反而更保真。
+        querySelector: (sel) => (qCache[String(sel)] ||= makeEl()),
         querySelectorAll: () => [],
         _setQueryAll(items) { this.querySelectorAll = () => items; return this; },
         type: '', children: [], disabled: false,
@@ -86,6 +92,7 @@ function collectDomPairs() {
 export async function loadApp({ confirmResult = true, promptValue = 'x', sandboxExtras = {} } = {}) {
     const alerts = [];
     const elements = {};
+    const qCache = {};              // document.querySelector 的按选择器缓存(理由见下)
     const store = new Map();
     const domContentLoadedCount = { n: 0 };
     const created = [];
@@ -102,7 +109,7 @@ export async function loadApp({ confirmResult = true, promptValue = 'x', sandbox
         ...sandboxExtras,
         document: {
             getElementById: (id) => (elements[id] ||= makeEl()),
-            querySelector: () => makeEl(),
+            querySelector: (sel) => (qCache[String(sel)] ||= makeEl()),   // 同上:同一选择器同一桩
             querySelectorAll: () => [],
             createElement: (tag) => { const el = makeEl(); created.push({ tag: String(tag || '').toUpperCase(), el }); return el; },
             createTextNode: (t) => ({ text: t }),
@@ -188,5 +195,5 @@ export async function loadApp({ confirmResult = true, promptValue = 'x', sandbox
         }
     };
 
-    return { run, elements, store, alerts, sandbox, domContentLoadedCount };
+    return { run, elements, store, alerts, sandbox, domContentLoadedCount, qCache };
 }

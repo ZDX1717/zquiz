@@ -1084,7 +1084,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 .home-fold-body { padding: 12px 0 14px; }
 .home-fold-body > :first-child { margin-top: 0; }
 .home-fold-body > :last-child { margin-bottom: 0; }
-.home-fold .rescue-grid { padding-bottom: 14px; margin-top: 12px; }
+.home-fold .rescue-routes { padding-bottom: 14px; margin-top: 12px; }
 
 /* 桌面:主键不拉满(它已经靠颜色和高度分主次),三个动作并排一行 */
 @media (min-width: 769px) {
@@ -2327,40 +2327,56 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     color: var(--c-text);
     font-size: 0.95em;
 }
-/* 救援区(👤 2026-09-13 二改:只铺一条路)。
-   以前 A/B 两栏并列、各挂一句"——只改格式,不动内容",272 字占手机 57% 屏,读完仍不知道点哪个。
-   现在按配没配 Key 只显示**一条**路(纯 CSS 切换 `#ai-rescue.auto-ready`,类由 bank.js 打)。 */
-.rescue-grid {
-    display: grid;
-    grid-template-columns: 1fr;      /* 一次只铺一条路:不要再回到 1fr 1fr */
-    gap: 12px;
+/* 救援区 = 「AI 整理成标准格式」(👤 2026-09-13 定名 + 定口径)。
+   两条路**都显示**,按配没配 Key 分主次:主的那条在上(浅底 + 整行 48px 按钮 + 说明),
+   次的在下(白底 + 40px 按钮 + 标签转灰)。`.is-primary` 由 bank.js 在 updateAiSettingsBadge()
+   里切换;HTML 里默认把手动那条写成 is-primary,JS 没跑之前也是对的。
+   ⚠️ 别再退回"A/B 两栏并列各一大段"(272 字、占 57% 屏,重点全无,👤 已否),
+      也别退回"只铺一条"(另一条用户根本发现不了)。 */
+.rescue-routes {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     margin-top: 8px;
 }
-#ai-rescue .rescue-col[data-route="auto"] { display: none; }
-#ai-rescue.auto-ready .rescue-col[data-route="auto"] { display: block; }
-#ai-rescue.auto-ready .rescue-col[data-route="manual"] { display: none; }
-/* 唯一的主操作:整行 + 手机拇指目标(颜色仍走 secondary —— 首页只许一个主色实心键) */
-.rescue-main { width: 100%; min-height: 44px; }
-@media (max-width: 768px) {
-    .rescue-main { min-height: 48px; }
-}
-/* 副路线的一句话提示(不占地方,只在手动这条路上出现) */
-.rescue-alt-line {
-    margin: 8px 0 0;
-    font-size: 12px;
-    color: var(--c-text-faint);
-}
-.rescue-col {
+.rescue-route {
     border: 1px solid var(--c-border-hairline);
-    border-radius: 6px;
-    padding: 8px;
+    border-radius: 8px;
+    padding: 10px;
+    order: 2;                                   /* 次:排在后面 */
+    background: var(--c-surface);
 }
-.rescue-col .prompt-toggle { margin-top: 8px; }
-.rescue-hint {
+.rescue-route.is-primary {
+    order: 1;                                   /* 主:排在最前 */
+    padding: 12px;
+    background: var(--c-surface-alt);            /* 浅底,与次要那条一眼分开 */
+    border-color: var(--c-border);
+}
+/* 路线名:主的那条重、次要那条灰(尺寸不拉开,免得又变成标题墙) */
+.rescue-route-name {
+    margin: 0 0 8px;
+    font-size: 13px;
+    color: var(--c-text-secondary);
+}
+.rescue-route.is-primary .rescue-route-name {
+    color: var(--c-text);
+    font-weight: 600;
+}
+/* 主操作整行、手机拇指目标;次要那条小一号(颜色都还是 secondary —— 首页只许一个主色实心键) */
+.rescue-main { width: auto; min-height: 40px; }
+.rescue-route.is-primary .rescue-main { width: 100%; min-height: 44px; }
+@media (max-width: 768px) {
+    .rescue-route.is-primary .rescue-main { min-height: 48px; }
+}
+.rescue-route-hint {
+    margin: 8px 0 0;
     font-size: 0.82em;
     color: var(--c-text-faint);
-    margin: 8px 0 0;
 }
+.rescue-route .prompt-toggle { margin-top: 8px; }
+/* 一键整理那句说明随 Key 状态换:没配 Key 时说"先去配",配好了说"结果会怎样" */
+#ai-rescue:not(.auto-ready) .rescue-route-hint[data-when="ready"] { display: none; }
+#ai-rescue.auto-ready .rescue-route-hint[data-when="needkey"] { display: none; }
 
 /* 预览视图切换(双 tab) */
 .preview-view-switch {

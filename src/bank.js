@@ -89,6 +89,9 @@ const promptToggleBtn = document.getElementById('prompt-toggle-btn');
 const promptContent = document.getElementById('prompt-content');
 // 救援区(👤 2026-09-13 对齐口径:解析不出来时要**自动展开**它,不能只在状态行里"提一句")
 const aiRescuePanel = document.getElementById('ai-rescue');
+// 「AI 整理成标准格式」的两条路(👤 2026-09-13:两条都显示,按配没配 Key 分主次)
+const rescueRouteManual = document.querySelector('#ai-rescue .rescue-route[data-route="manual"]');
+const rescueRouteAuto = document.querySelector('#ai-rescue .rescue-route[data-route="auto"]');
 // AI 设置与预览兜底
 const aiSettingsBtn = document.getElementById('ai-settings-btn');
 const rescueAiBtn = document.getElementById('rescue-ai-btn');
@@ -325,7 +328,7 @@ export function parsePastedText() {
         // 🚨 解析不出来 = 一句话提示 + **把救援区摊在眼前**(👤 2026-09-13)。
         // ⚠️ 提示**不要**再把救援区里的按钮逐个念一遍:救援区就在下面、已经自动展开,
         //    状态行再复述一遍只会变成一堵字(👤:"太啰嗦、重点不清楚")。状态行只负责"出了什么事 + 往哪走"。
-        showImportStatus('没认出题目 —— 用下面的「AI 格式整理」理顺原文,再点解析', 'error');
+        showImportStatus('没认出题目 —— 用「AI 整理成标准格式」理顺,再点解析', 'error');
         openRescuePanel();
         return;
     }
@@ -485,14 +488,18 @@ export function updateAiSettingsBadge() {
     if (!aiSettingsBtn) return;
     const cfg = normalizeAiConfig(loadAiConfig());
     const ok = aiConfigReady(cfg) && isAiTested(cfg);
+    const autoReady = aiConfigReady(cfg);   // 一键整理能不能跑,只看"配没配",与测没测无关
     aiSettingsBtn.textContent = ok ? '⚙ AI 已连接 ✓' : '⚙ AI 设置';
     aiSettingsBtn.classList.toggle('ai-connected', ok);
     // 救援区只铺一条路(👤 2026-09-13):配好 Key 的人看见"一键整理",没配的人看见"复制提示词"。
     // ⚠️ 判据用 aiConfigReady(**配没配好 Key**),不是开头的 ok(那是"配好且测通过") ——
     //    一键整理能不能跑起来只取决于配没配,与测没测无关。
     if (aiRescuePanel && aiRescuePanel.classList) {
-        aiRescuePanel.classList.toggle('auto-ready', aiConfigReady(cfg));
+        aiRescuePanel.classList.toggle('auto-ready', autoReady);
     }
+    // 两条路都留在屏幕上,只换主次:主的那条排最前、按钮整行带说明;次的在后、按钮小一号。
+    if (rescueRouteManual && rescueRouteManual.classList) rescueRouteManual.classList.toggle('is-primary', !autoReady);
+    if (rescueRouteAuto && rescueRouteAuto.classList) rescueRouteAuto.classList.toggle('is-primary', autoReady);
 }
 
 // ==================== 预览 AI 兜底(分块/进度/取消 → 复用预览确认管道) ====================
@@ -720,6 +727,8 @@ export async function rescueAiOrganize() {
             // 而屏幕上根本没有那个按钮(文案与界面不一致的经典坑)。
             showImportStatus('AI 没整理出题目 —— 已切到手动方式:点「📋 复制提示词和题目」发给聊天 AI 整理', 'error');
             if (aiRescuePanel && aiRescuePanel.classList) aiRescuePanel.classList.remove('auto-ready');
+            if (rescueRouteManual && rescueRouteManual.classList) rescueRouteManual.classList.add('is-primary');
+            if (rescueRouteAuto && rescueRouteAuto.classList) rescueRouteAuto.classList.remove('is-primary');
             return;
         }
         // 结果替换输入框内容,标记 AI 生成;点解析后逐题带 🤖
@@ -736,6 +745,8 @@ export async function rescueAiOrganize() {
             // 同"没整理出题目"那一支:整理失败也只能走手动路,而配了 Key 时手动那条是隐藏的 → 先切回来
             showImportStatus('AI 整理失败：' + (e.message || e) + ' —— 已切到手动方式:点「📋 复制提示词和题目」发给聊天 AI', 'error');
             if (aiRescuePanel && aiRescuePanel.classList) aiRescuePanel.classList.remove('auto-ready');
+            if (rescueRouteManual && rescueRouteManual.classList) rescueRouteManual.classList.add('is-primary');
+            if (rescueRouteAuto && rescueRouteAuto.classList) rescueRouteAuto.classList.remove('is-primary');
         }
     } finally {
         rescueAiRunning = false;

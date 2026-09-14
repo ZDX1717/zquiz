@@ -301,31 +301,45 @@ test('导入输入框的提示词:两条路都要说清(粘贴 / 选文件)(👤
     assert.ok(!/[（(]/.test(ph), '提示词里不该有括号补充');
 });
 
-test('救援区:只铺一条路 + 文案有预算(👤 2026-09-13 报"太啰嗦、重点不清楚")', () => {
+test('AI 整理成标准格式:两条路都显示 + 按情况分主次 + 文案有预算(👤 2026-09-13 定)', () => {
     const start = html.indexOf('id="ai-rescue"');
     const sec = html.slice(start, html.indexOf('</details>', start));
-    // ① 文案预算:整块可见文字 ≤190 字(改之前 272 字、占手机 57% 屏,👤 说读完仍不知道点哪个)
+    // ① 名字:👤 定的区名
+    assert.ok(sec.includes('<summary class="home-fold-summary">AI 整理成标准格式</summary>'),
+        '折叠标题应是「AI 整理成标准格式」');
+    // ② 文案预算:整块可见文字 ≤190 字(历史上两栏并列 272 字、占手机 57% 屏,👤 说读完不知道点哪个)
     const text = sec.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, '');
-    assert.ok(text.length <= 190, `救援区文案要短(≤190 字),实际 ${text.length} 字 —— 别再往里加解释`);
+    assert.ok(text.length <= 190, `文案要短(≤190 字),实际 ${text.length} 字 —— 别再往里加解释`);
     assert.ok(!/A ·|B ·/.test(sec), '不许再有「A · 手动整理…」这种标题墙(它占了最多字数)');
-    // ② 两条路:一次只显示一条,由 data-route + #ai-rescue.auto-ready 切换
-    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'), '两条路都要标 data-route');
-    assert.ok(/\.rescue-grid \{[^}]*grid-template-columns: 1fr;/.test(cssNoComments),
-        '.rescue-grid 必须单列 —— 回到 1fr 1fr 就是"两条路一起铺",重点又没了');
-    assert.ok(/#ai-rescue \.rescue-col\[data-route="auto"\] \{ display: none; \}/.test(cssNoComments),
-        '默认(没配 Key)应隐藏自动那条');
-    assert.ok(/#ai-rescue\.auto-ready \.rescue-col\[data-route="manual"\] \{ display: none; \}/.test(cssNoComments),
-        '配了 Key 应隐藏手动那条');
-    // ③ 唯一的主操作:整行大按钮(颜色仍 secondary —— 首页只许一个主色实心键)
-    const main = cssNoComments.match(/\n\.rescue-main \{([^}]*)\}/);
-    assert.ok(main && /width\s*:\s*100%/.test(main[1]), '主操作按钮应整行');
+    // ③ **两条路都在**(不再隐藏任何一条 —— 只铺一条时另一条用户根本发现不了)
+    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'), '两条路都要在');
+    assert.ok(!/rescue-route\[data-route=[^\]]*\][^{]*\{[^}]*display:\s*none/.test(cssNoComments),
+        '不许用 display:none 藏掉整条路 —— 主次靠样式,不靠隐藏');
+    assert.ok(/\.rescue-route\s*\{[^}]*order:\s*2/.test(cssNoComments) &&
+        /\.rescue-route\.is-primary\s*\{[^}]*order:\s*1/.test(cssNoComments),
+        '主次靠 order:主的那条排最前');
+    assert.ok(/\.rescue-route\.is-primary\s*\{[^}]*background:\s*var\(--c-surface-alt\)/.test(cssNoComments),
+        '主的那条要有浅底,与次要那条一眼分开');
+    assert.ok(/\.rescue-route\.is-primary \.rescue-route-name\s*\{[^}]*font-weight:\s*600/.test(cssNoComments),
+        '主那条的路线名要加粗');
+    // ④ 主 = 整行 48px(手机),次 = 40px;颜色都还是 secondary —— 首页只许一个主色实心键
+    assert.ok(/\.rescue-main\s*\{[^}]*min-height:\s*40px/.test(cssNoComments), '次要那条按钮 40px');
+    assert.ok(/\.rescue-route\.is-primary \.rescue-main\s*\{[^}]*width:\s*100%;\s*min-height:\s*44px/.test(cssNoComments),
+        '主那条按钮应整行');
     const mobileBlocks = [...cssNoComments.matchAll(/@media \(max-width: 768px\) \{([\s\S]*?)\n\}/g)].map(m => m[1]);
-    assert.ok(mobileBlocks.some(b => /\.rescue-main \{ min-height: 48px; \}/.test(b)),
-        '手机档主操作按钮应 48px(拇指目标,与首页主键同档)');
+    assert.ok(mobileBlocks.some(b => /\.rescue-route\.is-primary \.rescue-main \{ min-height: 48px; \}/.test(b)),
+        '手机档主按钮应 48px(拇指目标)');
     for (const id of ['copy-prompt-btn', 'rescue-ai-btn']) {
         assert.ok(new RegExp(`id="${id}" class="action-btn secondary rescue-main"`).test(html),
             `${id} 应是 secondary + rescue-main(不许染主色)`);
     }
+    // ⑤ HTML 默认(JS 还没跑)= 没配 Key 的情形:手动那条在主位
+    assert.ok(/class="rescue-route is-primary" data-route="manual"/.test(sec),
+        '默认应把手动那条写成 is-primary(与"没配 Key 的人占多数"一致)');
+    // ⑥ 一键整理那句说明随 Key 状态换
+    assert.ok(sec.includes('data-when="needkey"') && sec.includes('data-when="ready"'), '两种说明都要在');
+    assert.ok(/#ai-rescue:not\(\.auto-ready\) \.rescue-route-hint\[data-when="ready"\] \{ display: none; \}/.test(cssNoComments),
+        '没配 Key 时不该显示"结果会怎样",该显示"先去配 Key"');
 });
 
 test('首页主卡片与救援区:文案里不许再塞括号补充(👤 2026-09-13:"去掉括号里的废话")', () => {
