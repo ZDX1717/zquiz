@@ -294,6 +294,17 @@ function showPdfNotice(reason, detail) {
         );
         return;
     }
+    if (reason === 'overlay') {
+        // 水印/叠加层:抽出来的文字与正文交错,分不开 → 别硬导入,给两条可走的路
+        showFileNotice(
+            '<b>📄 这份 PDF 里叠着水印或另一层文字</b>' +
+            `<p class="file-notice-hint">${detail || ''}</p>` +
+            '<p class="file-notice-hint">① 这种文件抽出来的文字会和正文交错,建议用下面的「AI 整理成标准格式」让它按题号理顺。</p>' +
+            '<p class="file-notice-hint">② 或者换一份**没有水印**的源文件 / 直接复制文字粘贴。</p>',
+            'warning'
+        );
+        return;
+    }
     if (reason === 'fontmap') {
         showFileNotice(
             '<b>📄 这份 PDF 的字体没带文字映射</b>' +

@@ -518,3 +518,27 @@ test('汉字之间不补空格(两端对齐拉开字距也不补);拉丁词之�
     }));
     assert.ok(!/ /.test(cjk.text), '汉字之间不许出现空格,实际:' + JSON.stringify(cjk.text));
 });
+
+test('水印/叠加层:超大字距的碎字会被闸门拦下(不硬导入)', async () => {
+    // 真实的"防复制题本"PDF 会把水印文字**织进每一行**(字距拉到好几个字),和正文画在同一条基线上 ——
+    // 几何上分不开,所以判据是"同一行里超大字距片段的比例",而不是去看文字内容。
+    // ⚠️ 空隙判据只在**有真实宽度**时生效,所以 fixture 要声明 /Widths(真文件都有)。
+    const widthArr = Array.from({ length: 100 }, () => 500).join(' ');   // 每字 0.5 em
+    const font = `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 0 /LastChar 99 /Widths [${widthArr}] >>`;
+    // 8 字 × 0.5 em × 10pt = 40 单位;下一段起点推 80 ⇒ 空隙 40 = 4 em > 3 em 阈值
+    const messy = await pdfToText(onePagePdf(
+        'BT /F1 10 Tf 60 700 Td (AAAAAAAA) Tj 80 0 Td (BBBBBBBB) Tj 80 0 Td (CCCCCCCC) Tj ET', { fontDict: font }));
+    assert.strictEqual(messy.gate.ok, false, '超大字距应被判为叠加层,实际:' + JSON.stringify(messy.gate));
+    assert.strictEqual(messy.gate.reason, 'overlay');
+    // 正常排版不能误伤:同一个字体,段落紧挨着,没有超大空隙
+    const normal = await pdfToText(onePagePdf(
+        'BT /F1 10 Tf 60 700 Td (AAAAAAAA) Tj 40 0 Td (BBBBBBBB) Tj 0 -14 Td (CCCCCCCC) Tj ET', { fontDict: font }));
+    assert.strictEqual(normal.gate.ok, true, '正常排版不许被误判:' + normal.gate.reason + normal.gate.detail);
+});
+
+test('detectRepeatedPhrase 仍可用于诊断(不参与闸门:目录点线会误伤)', async () => {
+    const { detectRepeatedPhrase } = await import('../src/pdf.js');
+    assert.ok(detectRepeatedPhrase('关注花生十三公众号每日一练'.repeat(3)), '重复长句应能识别');
+    assert.strictEqual(detectRepeatedPhrase('考点1 刷题……………… 1\n考点2 刷题……………… 7'), null,
+        '目录点线这种短片段不该被判成水印');
+});

@@ -686,6 +686,8 @@ export function collectRuns(content, fontTable = { byName: new Map() }) {
             size: effSize,
             forced,
             vertical: !!(font && font.vertical),
+            // 诊断用:矩阵原样留一份(排查"坐标算错"这种问题时不至于靠猜)
+            mat: { ...ctm, tm: { ...tm } },
         });
         forced = false;
         pendingTjGap = false;
@@ -849,6 +851,7 @@ function runsToText(runs) {
     // ⚠️ 只在**真实宽度**之间补(没 /Widths 时估出来的宽度会把英文词切开),或者空隙本身就来自 TJ 位移。
     const SEP_EM = 0.2;
     const out = [];
+    let bigGap = 0;                                  // 超大字距的片段数(供闸门判"叠加层")
     for (const l of lines) {
         let line = '';
         let prev = null;
@@ -863,14 +866,20 @@ function runsToText(runs) {
                     && /^[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3000-\u303f\uff00-\uffef]/.test(r.text);
                 if (known && !cjkAround && gap > SEP_EM * Math.max(prev.size, r.size)
                     && !/\s$/.test(line) && !/^\s/.test(r.text)) line += ' ';
+                if (gap > 3 * Math.max(prev.size, r.size)) bigGap++;   // 3 字以上的空隙:疑似叠加层
             }
             line += r.text;
             prev = r;
         }
         out.push(line);
     }
-    return out.join('\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    const text = out.join('\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    lastRunStats.bigGapRatio = runs.length ? bigGap / runs.length : 0;
+    return text;
 }
+
+// 最近一次抽文本的中间统计(仅供 pdfToText 交给闸门,不对外承诺稳定)
+export const lastRunStats = { bigGapRatio: 0 };
 
 // 内容流词法:只切出我们关心的东西(字符串 / 数字 / 名字 / 数组 / 算子)
 function tokenizeContent(s) {
@@ -1000,6 +1009,23 @@ async function collectContentText(latin1, objects, fontEntries, globalFonts) {
     return { text: fallback.join('\n'), pages: pageNums.length };
 }
 
+// 长句重复检测:水印类 PDF 会把同一句话（如"关注××公众号，每日…"）**织进每一行**，
+// 和正文画在同一条基线上 —— 几何上分不开，抽出来就是正文与水印交错。判据：一句 ≥12 字的
+// 中文片段在全文里出现 ≥3 次。正常卷子里不会有这种长句反复出现（"答案：A"这类短句不算）。
+export function detectRepeatedPhrase(text, { window = 12, times = 3 } = {}) {
+    const clean = (text || '').replace(/\s+/g, '');
+    if (clean.length < window * times) return null;
+    const seen = new Map();
+    for (let i = 0; i + window <= clean.length; i++) {
+        const frag = clean.slice(i, i + window);
+        if (!/[\u4e00-\u9fff]/.test(frag)) continue;          // 只认含中文的长句
+        const n = (seen.get(frag) || 0) + 1;
+        seen.set(frag, n);
+        if (n >= times) return frag;
+    }
+    return null;
+}
+
 // ---------- 质量闸门 ----------
 // 这一条决定成败:抽不准就**不硬导入**(宁可让用户去用 AI/复制那条路),
 // 因为"半对半错的题目"比"什么都没有"更害人 —— 用户得逐题核对才发现。
@@ -1027,6 +1053,13 @@ export function pdfTextGate(text, stats = {}) {
     }
     if (chars < 8) {
         return { ok: false, reason: 'scanned', detail: `只抽到 ${chars} 个字符 —— 这份 PDF 里几乎没有可复制的文字(多半是图片版)` };
+    }
+    // 叠加层(水印 / OCR 文字层):被"织"进每一行的水印是靠**超大字距**铺满整行的 ——
+    // 同一行里相邻片段之间隔着 3 个字以上、又没有空格字符,正常排版不会这样(两端对齐最多 1~2 字)。
+    // 这类文字几何上与正文交错,分不开;与其塞一坨脏文字进输入框,不如明确告诉用户走 AI 那条路。
+    const overlapped = stats.bigGapRatio || 0;
+    if (overlapped > 0.2) {
+        return { ok: false, reason: 'overlay', detail: `抽出的文字里有约 ${Math.round(overlapped * 100)}% 的片段是"超大字距碎字",说明 PDF 里叠着水印或另一层文字` };
     }
     return { ok: true, reason: '', detail: '' };
 }
@@ -1062,6 +1095,6 @@ export async function pdfToText(arrayBuffer) {
         if (f.isCid && !f.hasToUnicode) cidFontsWithoutMap++;
     }
     const cjkCount = (text.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g) || []).length;
-    const gate = pdfTextGate(text, { cidFontsWithoutMap, cjkCount });
+    const gate = pdfTextGate(text, { cidFontsWithoutMap, cjkCount, bigGapRatio: lastRunStats.bigGapRatio });
     return { text, pages, gate, stats: { objects: objects.size, cidFontsWithoutMap, cjkCount } };
 }
