@@ -107,7 +107,8 @@ const previewTargetBankSelect = document.getElementById('preview-target-bank');
 const previewBankModeInputs = Array.prototype.slice.call(document.querySelectorAll('input[name="preview-bank-mode"]'));
 const recycleBinDetails = document.getElementById('recycle-bin');
 const recycleMenu = document.querySelector('.recycle-menu');
-// 首页卡片右上角的「?」= 支持的题目格式悬浮面板(👤 2026-09-13;原来是首页底部的折叠块)
+// 「导入题库」右边的「?」= 支持的题目格式悬浮面板(👤 2026-09-13 从底部折叠块收成「?」;
+// 👤 2026-09-14 从卡片右上角挪到标题右边)
 const formatHelpDetails = document.getElementById('format-help');
 const formatHelpWrap = document.querySelector('.home-help');
 const previewOverwrite = document.getElementById('preview-overwrite');

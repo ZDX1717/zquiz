@@ -1193,12 +1193,51 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 }
 
 
-#paste-input {
-    width: 100%;
-    box-sizing: border-box;
+/* 输入框 = 一个"带角落动作的盒子"(👤 2026-09-14:清空挪到输入框右上角)。
+   ⚠️ 边框/圆角/聚焦环从 textarea 挪到**盒子**上:角标与文字必须同属一个框,
+      否则右上角的「清空」看着像浮在框外面(而它自己描个边又和 textarea 的边叠成双线)。
+   ⚠️ 角标**独占一行**、不浮在文字上:浮着的话长行钻到按钮底下会被遮住,
+      给 textarea 加 padding-right 又是整块宽度白让(手机上白让 40px 太贵)。 */
+.paste-box {
     border: 1px solid var(--c-border);
     border-radius: 6px;
-    padding: 8px;
+    background: var(--c-surface);
+    padding: 3px 6px 6px;
+}
+.paste-box:focus-within { border-color: var(--c-primary); }   /* 聚焦环跟着盒子走 */
+.paste-box-head {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;   /* 角标贴右上角 */
+    height: 22px;
+}
+/* 「清空」角标:小号药丸、无边框(None 必须显式写,否则露浏览器默认黑边)、描边留给 hover。
+   它是**三级**动作(擦掉内容),视觉重量要低于「选择文件」那个描边按钮,更低于主键。 */
+.paste-clear {
+    border: none;
+    background: none;
+    padding: 3px 9px;
+    border-radius: 999px;
+    color: var(--c-text-faint);
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+}
+.paste-clear:hover {
+    background: var(--c-danger-soft);
+    color: var(--c-danger-deep);   /* 擦除类动作才在 hover 时露一点红,静态态保持安静 */
+}
+
+#paste-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    border: none;
+    background: none;
+    border-radius: 0;
+    padding: 0 2px;
     font-size: 16px;   /* >=16px:避免 iOS 聚焦自动放大 */
     line-height: 1.7;
     resize: vertical;
@@ -1214,8 +1253,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 }
 
 #paste-input:focus {
-    outline: none;
-    border-color: var(--c-primary);
+    outline: none;   /* 聚焦环由 .paste-box:focus-within 负责(见上) */
 }
 
 .paste-actions {
@@ -2257,17 +2295,9 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     color: var(--c-ai-connected-text);
 }
 
-/* ⚠️ `.card-head` 是 space-between:放进第三个孩子,三者会被**平摊**(标题左、中间、右)。
-   多个行内控件必须**包一组**,才一起贴右(与题库页 `.banks-header-actions` 同一手法)。 */
-.card-head-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-/* ---- 卡片右上角的「?」= 支持的题目格式悬浮面板(👤 2026-09-13)----
-   原来它是首页底部一个常驻折叠块(`#format-help.home-fold`),占一屏位置上的一块;
-   格式说明是"要用时才查"的参考资料,挂在**输入框模块的右上角**才对位。
+/* ---- 「导入题库」右边的「?」= 支持的题目格式悬浮面板 ----
+   它搬过两次家:👤 2026-09-13 从首页底部的常驻折叠块收成「?」;👤 2026-09-14 从卡片右上角
+   挪到**标题右边**(贴着标题 = 一眼看出它说的是这件事)。
    ⚠️ 与回收站同一套路:浮层用 absolute(不占文档流)+ `[open]` 显式控制显隐
       —— 本机 chromium 上闭合的 details **仍会渲染 children**(DESIGN §3.7 记过这个坑)。 */
 .home-help { position: relative; display: inline-flex; }
@@ -2279,7 +2309,10 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     position: relative;          /* 手机档悬浮面板(static 的 .home-help)的定位参照 */
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    /* ⚠️ flex-start,不是 space-between(👤 2026-09-14 把「?」挪到标题右边之后):
+       space-between 会把**两个孩子分别顶到左右两端**,标题与「?」被拉开一整行 ——
+       而「?」说明的就是"导入题库"这件事,它必须贴着标题。 */
+    justify-content: flex-start;
     gap: 8px;
     flex-wrap: wrap;
     min-height: 44px;
@@ -2313,7 +2346,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 .home-help-panel {
     position: absolute;
     top: calc(100% + 6px);
-    right: 0;                        /* 贴触发器右边,不会往右溢出 */
+    left: 0;                         /* 触发器在标题右边(左半侧),面板贴它的**左**边才对位 */
     z-index: 60;                     /* 悬浮菜单档(见 DESIGN §3.8) */
     width: min(440px, calc(100vw - 32px));
     max-height: 60vh;                /* 悬浮面板不许撑高页面 */
@@ -2342,9 +2375,10 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     line-height: 1.55;
     white-space: pre;
 }
-/* 🚨 手机档:面板**不能**再按触发器右对齐 —— 触发器在卡片最右,面板 358px 宽右对齐后
-   左边缘会跑到屏幕外(实测 left = -97px)。改为锚定**整张卡片头部**:`.home-help` 取消定位,
-   面板左右都贴头部的边(手机上面板本来就该占满宽度)。 */
+/* 🚨 手机档:面板不按触发器定位,改为锚定**整张卡片头部**(`.home-help` 取消定位,
+   面板左右都贴头部的边 —— 手机上面板本来就该占满宽度)。
+   ⚠️ 这条是踩坑留下的:触发器当年在卡片最右,面板 358px 宽按它右对齐后左边缘跑到屏幕外
+   (实测 left = -97px)。触发器如今搬到了标题右边,锚定卡片头部这一招仍然更稳。 */
 @media (max-width: 768px) {
     .home-help { position: static; }
     .home-help-panel {
@@ -2461,10 +2495,11 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 @media (max-width: 600px) {
     /* ⚠️ 老的"所有按钮 flex:1 1 auto 等宽"会把主键与次键拉成一样大,主次就没了 ——
        现在分工交给 .paste-primary / .paste-actions-minor 自己定义(见首页那一节) */
-    #paste-input {
-        min-height: 120px;
-        padding: 10px;
-    }
+    .paste-box { padding: 3px 8px 8px; }   /* 内边距跟着盒子走(边框在盒子上) */
+    #paste-input { min-height: 120px; }
+    /* 手机档把角标放大一档(20px 高对指头太细),但仍明显小于下排的 40px 次要按钮 */
+    .paste-box-head { height: 28px; }
+    .paste-clear { padding: 5px 12px; font-size: 13px; }
 }
 
 /* 工具栏分组标签:看 / 选 / 🤖 三组,一眼分清视图与勾选 */
@@ -2594,10 +2629,10 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     }
 
     /* 粘贴框与状态行紧凑 */
+    .paste-box { padding: 2px 6px 6px; }
     #paste-input {
         rows: auto;
         min-height: 90px;
-        padding: 8px;
         font-size: 16px;
     }
     .status-line {

@@ -205,10 +205,14 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
     assert.strictEqual(primary.length, 1, `首页只该有一个实心主按钮,实际 ${primary.length} 个:${JSON.stringify(btnClasses)}`);
     assert.ok(home.includes('id="paste-parse-btn" class="action-btn paste-primary"'),
         '主键应是「解析并预览」');
-    for (const id of ['upload-btn', 'paste-clear-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
+    for (const id of ['upload-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
         const re = new RegExp(`id="${id}" class="action-btn[^"]*secondary`);
         assert.ok(re.test(home), `${id} 应是次要按钮(描边),不与主键争视觉重量`);
     }
+    // 👤 2026-09-14:「清空」从下排动作区挪到输入框右上角 —— 它是**三级**动作(擦掉内容),
+    // 和一个描边次要按钮并列会读成"往里加东西"的同类动作。现在用 .paste-clear 小药丸。
+    assert.ok(/id="paste-clear-btn" class="paste-clear"/.test(home), '「清空」应是 .paste-clear 角标');
+    assert.ok(!/id="paste-clear-btn" class="action-btn/.test(home), '不该再是 .action-btn')
     // ③ 补救路径默认**收起**(它不是主任务,常驻会占掉手机半屏)。
     //    参考材料(格式说明)不再走折叠块 —— 它收成了卡片右上角的「?」悬浮面板(见下一个测试)。
     assert.ok(/<details id="ai-rescue" class="home-fold">/.test(home), 'ai-rescue 应是折叠块');
@@ -242,14 +246,22 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
         '「所有按钮等宽」的老规则会把主次抹平,不许复活');
 });
 
-test('首页「?」= 支持的题目格式悬浮面板(👤 2026-09-13:去掉底部折叠块,改挂输入框模块右上角)', () => {
+test('首页「?」= 「导入题库」右边的格式说明悬浮面板(👤 2026-09-14:从卡头右上角挪到标题右边)', () => {
     const home = html.slice(html.indexOf('id="home-section"'), html.indexOf('id="quiz-section"'));
-    // ① 位置:在**导入卡片**的 head 里、输入框之前;且在「⚙ AI 设置」右侧(右上角区域)
+    // ① 位置:在**导入卡片**的 head 里、**紧贴标题右边**(👤 2026-09-14:它是"导入题库"这件事的说明),
+    //    且在输入框之前 —— 不是卡片右上角、更不是页面底部。
     const headIdx = home.indexOf('class="card-head"');
+    const titleIdx = home.indexOf('<h3>导入题库</h3>');
     const helpIdx = home.indexOf('id="format-help-btn"');
     const textareaIdx = home.indexOf('id="paste-input"');
-    assert.ok(headIdx > -1 && helpIdx > headIdx && helpIdx < textareaIdx,
-        '「?」应在导入卡片的头部(输入框模块右上角),不是页面底部');
+    assert.ok(headIdx > -1 && titleIdx > headIdx && helpIdx > titleIdx && helpIdx < textareaIdx,
+        '「?」应紧跟在「导入题库」标题右边(卡头内、输入框之前)');
+    assert.ok(!/<div class="card-head-actions">/.test(home),
+        '卡头动作组已撤(只剩标题 + 「?」两个孩子,直接挨着排)');
+    // 卡头必须是 flex-start:space-between 会把标题与「?」分别顶到左右两端,两个就不挨着了
+    const homeHeadRule = cssNoComments.match(/\n\.home-import \.card-head \{([^}]*)\}/);
+    assert.ok(homeHeadRule && /justify-content\s*:\s*flex-start/.test(homeHeadRule[1]),
+        '首页卡头应是 flex-start(标题与「?」贴在一起,不许被 space-between 拉开)');
     // 👤 2026-09-14:⚙ AI 设置挪去标题栏了,卡头右上角只剩「?」
     assert.ok(!home.includes('id="ai-settings-btn"'), '⚙ AI 设置已移到标题栏,不该再在首页卡片里');
     // 新家 = 标题栏(header),且必须在 nav 之后:桌面档靠 flex 顺序落在中右区,
@@ -258,11 +270,18 @@ test('首页「?」= 支持的题目格式悬浮面板(👤 2026-09-13:去掉底
     assert.ok(aiIdx > html.indexOf('<header') && aiIdx < html.indexOf('</header>'),
         '⚙ AI 设置应在标题栏(header)里,不该留在 <main> 的卡片里');
     assert.ok(aiIdx > html.indexOf('</nav>'), '⚙ AI 设置应在导航之后、主题开关之前');
-    // ② ⚠️ 两个行内控件必须包一组:`.card-head` 是 space-between,三个孩子会被平摊到左/中/右
-    const actions = home.slice(home.indexOf('class="card-head-actions"'), home.indexOf('id="format-help-btn"'));
-    assert.ok(!actions.includes('ai-settings-btn'), '⚙ AI 设置已挪走,不该还在卡头动作组里');
-    assert.ok(/\.card-head-actions\s*\{[^}]*display\s*:\s*flex/.test(cssNoComments),
-        '.card-head-actions 应是 flex 行');
+    // ② 「清空」角标与「?」不是一回事:「?」在卡头(标题右边),「清空」在输入框盒子的头行
+    const boxHead = home.slice(home.indexOf('class="paste-box-head"'), home.indexOf('id="paste-input"'));
+    assert.ok(boxHead.includes('id="paste-clear-btn"'),
+        '「清空」应在输入框盒子的头行里(textarea 之前 = 框的右上角)');
+    assert.ok(home.indexOf('class="paste-box"') < home.indexOf('id="paste-input"'),
+        '输入框应包在 .paste-box 里(边框与聚焦环由盒子承担)');
+    assert.ok(/\.paste-box:focus-within\s*\{[^}]*border-color/.test(cssNoComments),
+        '聚焦环必须跟着盒子走 —— textarea 现在无边框,环不给盒子就"点进去没反应"');
+    assert.ok(/\.paste-clear\s*\{[^}]*border-radius\s*:\s*999px/.test(cssNoComments),
+        '「清空」应是小号药丸(形状与大小按 👤 要求重新设计)');
+    assert.ok(/\.paste-clear\s*\{[^}]*border\s*:\s*none/.test(cssNoComments),
+        '按钮类必须显式声明 border(否则露浏览器默认黑边)');
     // ③ 内容搬过来了(格式说明的正文不许丢)
     const panel = home.slice(home.indexOf('class="home-help-panel"'), home.indexOf('</details>'));
     for (const kw of ['支持的题目格式', '字段式', '判断题', '参考答案', '自动识别']) {
@@ -278,7 +297,7 @@ test('首页「?」= 支持的题目格式悬浮面板(👤 2026-09-13:去掉底
     assert.ok(/z-index\s*:\s*60/.test(panelRule[1]), '面板走「悬浮菜单」档 z-index:60(见 DESIGN §3.8)');
     assert.ok(/max-height\s*:\s*60vh/.test(panelRule[1]) && /overflow-y\s*:\s*auto/.test(panelRule[1]),
         '面板不许撑高页面:60vh + 自己滚');
-    assert.ok(/right\s*:\s*0/.test(panelRule[1]), '贴触发器右边,避免往右溢出屏幕');
+    assert.ok(/left\s*:\s*0/.test(panelRule[1]), '触发器在标题右边(左半侧),面板贴它的左边才对位');
     // ⑤ 触发器是圆形小键,**不是**第二个主色实心按钮(首页只许有一个)
     const btnRule = cssNoComments.match(/\n\.home-help-btn \{([^}]*)\}/);
     assert.ok(btnRule && /border-radius\s*:\s*50%/.test(btnRule[1]), '问号键应是圆形');
@@ -302,7 +321,8 @@ test('首页「?」= 支持的题目格式悬浮面板(👤 2026-09-13:去掉底
         '不许再有裸 .card-head { position: relative } —— 那是弹窗那条的泄漏源');
     const homeHead = cssNoComments.match(/\n\.home-import \.card-head \{([^}]*)\}/);
     assert.ok(homeHead, '首页卡头应有自己的规则');
-    assert.ok(/justify-content\s*:\s*space-between/.test(homeHead[1]), '首页卡头:h3 在左、动作组贴右');
+    // 👤 2026-09-14:卡头改 flex-start(「?」贴标题右边;两个孩子本来就都在左边)
+    assert.ok(/justify-content\s*:\s*flex-start/.test(homeHead[1]), '首页卡头:标题与「?」贴左挨着');
     assert.ok(/padding\s*:\s*0;/.test(homeHead[1]), '首页卡头不许留弹窗 ✕ 的那 48px 右侧留白');
     assert.ok(/position\s*:\s*relative/.test(homeHead[1]),
         '首页卡头要 relative —— 手机档(此时 .home-help 是 static)的悬浮面板靠它定位');

@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1089">
+    <link rel="stylesheet" href="styles.css?v=1091">
 </head>
 <body>
     <div class="container">
@@ -62,18 +62,20 @@
             <div class="operation-card home-import">
                 <div class="card-head">
                     <h3>导入题库</h3>
-                    <div class="card-head-actions">
-                        <!-- 「支持的题目格式」悬浮面板(👤 2026-09-13):原来是首页底部一个常驻折叠块,
-                             现在收成卡片右上角的「?」——点开悬浮显示,不再占页面高度。
-                             ⚠️ 与回收站同一套路(`<details>` + `[open]` 显式控制显隐,见 DESIGN §3.7):
-                                闭合的 details 在本机 chromium 上**仍会渲染 children**,必须自己 display:none。
-                             ⚠️ 点面板外面要收起(main.js 里和回收站/筛选面板同一处处理)。 -->
-                        <details id="format-help" class="home-help">
-                            <summary id="format-help-btn" class="home-help-btn" title="支持的题目格式(自动识别,无需选择)" aria-label="支持的题目格式">?</summary>
-                            <div class="home-help-panel">
-                                <p class="home-help-title">支持的题目格式 · 自动识别，无需选择</p>
-                                <p>编号式 / 字段式 / 单行混排 / 判断题四种常见排版自动识别；答案可写在行内、行末括号或文末答案表。</p>
-                                <pre>① 字段式
+                    <!-- 「支持的题目格式」悬浮面板(👤 2026-09-13 从底部折叠块收成「?」;
+                         👤 2026-09-14 再从卡片右上角挪到**标题右边** —— 它说明的就是"导入题库"
+                         这件事,贴着标题才是一句话;甩到最右边就像另一个陌生按钮。
+                         ⚠️ 卡头因此不再 space-between(那会把两个孩子分别顶到左右两端),
+                            改成 flex-start + gap,两个孩子在左边挨着。
+                         ⚠️ 与回收站同一套路(`<details>` + `[open]` 显式控制显隐,见 DESIGN §3.7):
+                            闭合的 details 在本机 chromium 上**仍会渲染 children**,必须自己 display:none。
+                         ⚠️ 点面板外面要收起(main.js 里和回收站/筛选面板同一处处理)。 -->
+                    <details id="format-help" class="home-help">
+                        <summary id="format-help-btn" class="home-help-btn" title="支持的题目格式(自动识别,无需选择)" aria-label="支持的题目格式">?</summary>
+                        <div class="home-help-panel">
+                            <p class="home-help-title">支持的题目格式 · 自动识别，无需选择</p>
+                            <p>编号式 / 字段式 / 单行混排 / 判断题四种常见排版自动识别；答案可写在行内、行末括号或文末答案表。</p>
+                            <pre>① 字段式
 题目：xxx
 A：选项A  B：选项B
 答案：A        （多选连写：答案：ABC）
@@ -87,17 +89,25 @@ A：选项A  B：选项B
   参考答案：
   1.B  2.【A】  3-5 BBA
 · 判断语境：空括号"（ ）"视为对（只标错惯例）</pre>
-                                <p class="meta-note">双行选项、逗号与空格分隔、选项折行、空括号等真实文档排版自动容错；缺答案题入库为"待补"。</p>
-                            </div>
-                        </details>
-                    </div>
+                            <p class="meta-note">双行选项、逗号与空格分隔、选项折行、空括号等真实文档排版自动容错；缺答案题入库为"待补"。</p>
+                        </div>
+                    </details>
                 </div>
-                <textarea id="paste-input" rows="6" placeholder="方式一：把题目文字粘贴到这里&#10;方式二：点「选择文件」，目前支持 Word / PDF / txt"></textarea>
+                <!-- 输入框 = 一个"带角落动作的盒子"(👤 2026-09-14:清空挪到输入框右上角)。
+                     ⚠️ 「清空」不再和「选择文件」并列在下排(那是"往里加东西"的两个动作,
+                        混进一个"擦掉"的动词,主次与语义都不对);提到框内右上角,小号药丸形。
+                     ⚠️ 用**独立一行**的角标(不是浮在文字上):浮着的话长行会钻到按钮底下被遮住,
+                        而给 textarea 加 padding-right 又等于整块宽度都白让。 -->
+                <div class="paste-box">
+                    <div class="paste-box-head">
+                        <button type="button" id="paste-clear-btn" class="paste-clear" title="清空输入框里的内容">清空</button>
+                    </div>
+                    <textarea id="paste-input" rows="6" placeholder="方式一：把题目文字粘贴到这里&#10;方式二：点「选择文件」，目前支持 Word / PDF / txt"></textarea>
+                </div>
                 <div class="paste-actions">
                     <button id="paste-parse-btn" class="action-btn paste-primary">解析并预览</button>
                     <div class="paste-actions-minor">
                         <button id="upload-btn" class="action-btn secondary">📂 选择文件</button>
-                        <button id="paste-clear-btn" class="action-btn secondary">清空</button>
                     </div>
                 </div>
                 <input type="file" id="file-input" class="hidden" accept=".txt,.md,.csv,.json,.docx,.pdf,.doc" />
@@ -106,7 +116,7 @@ A：选项A  B：选项B
                 <!-- ⚠️ 这里原来有个「撤销上次导入」。👤 2026-09-13 定:**导入的撤销统一走题库版本记录**
                      (批次级撤销语义脆弱:手改过的题指纹变了就撤不掉,结果是"半撤"),
                      「上次导入」信息挪到题库页,只作展示。
-                     ⚠️ ③ 参考材料的**折叠块也删了**(👤 2026-09-13):挪成卡片右上角的「?」悬浮面板
+                     ⚠️ ③ 参考材料的**折叠块也删了**(👤 2026-09-13):挪成「导入题库」右边的「?」悬浮面板
                      (见 head 里的 .home-help)。格式说明是"要用时才查"的参考资料,而它属于
                      **输入框这个模块** —— 挂在输入框模块的右上角才对位。 -->
             </div>
@@ -140,7 +150,7 @@ A：选项A  B：选项B
                 </div>
             </details>
 
-            <!-- ③ 参考材料:已挪进卡片右上角的「?」悬浮面板(.home-help),不再是折叠块 -->
+            <!-- ③ 参考材料:已挪进「导入题库」右边的「?」悬浮面板(.home-help),不再是折叠块 -->
 
             <!-- 装到主屏的引导(👤 P0-1.4):iOS 没有 beforeinstallprompt,只能"教一句";
                  **不做弹窗**。👤 2026-09-13:从**题库页底部**挪到**首页底部** ——
@@ -701,6 +711,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1089"></script>
+    <script type="module" src="src/main.js?v=1091"></script>
 </body>
 </html>
