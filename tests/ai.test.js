@@ -335,6 +335,46 @@ test('「🤖 AI 整理输入框」:AI 接口整理 → 结果入输入框 → �
     assert.strictEqual(run(`previewData[0].aiNote`), '');
 });
 
+test('「🤖 AI 整理输入框」运行中:按钮仍然可点(再点一次 = 取消),绝不许 disable', async () => {
+    // 🚨 回归(👤 2026-09-14 报"「🤖 整理中…（点击取消）」点了没反应,并不能取消"):
+    //    被 disabled 的按钮**不再派发 click 事件**,而文案写着"点击取消" → 取消永远点不到。
+    //    ⚠️ 这个 bug 单元测试本来抓不到:桩子不看 disabled,`_listeners.click()` 照样能调到监听器。
+    //    所以这条测试断的是**契约**——"运行中按钮不许是 disabled,忙态只能用类表示"。
+    let signal = null;
+    const { run, store, elements } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
+        sandboxExtras: {
+            AbortController,
+            // 卡住不返回的 fetch;abort 时 reject 一个 AbortError(与真实 fetch 同款行为)
+            fetch: (url, opts) => new Promise((resolve, reject) => {
+                signal = opts && opts.signal;
+                if (signal) signal.addEventListener('abort', () => reject(new DOMException('信号已中止', 'AbortError')));
+            }),
+        },
+    }));
+    store.set('aiConfig', JSON.stringify(CFG));
+    run(`init()`);
+    run(`pasteInput.value = '一坨乱原文'`);
+    const pending = run(`(async () => { await rescueAiOrganize(); })()`);   // 故意不 await:停在请求里
+    await new Promise((r) => setImmediate(r));                              // 让 async 函数跑到 await
+
+    const btn = elements['rescue-ai-btn'];
+    assert.strictEqual(btn.disabled, false,
+        '运行中**不许** disable —— 被 disabled 的按钮收不到 click,"点击取消"就成了空话');
+    assert.strictEqual(btn._classes.has('is-busy'), true, '运行中应打 .is-busy 表示"正在进行"');
+    assert.strictEqual(btn.getAttribute('aria-busy'), 'true', '无障碍上也标成忙态');
+    assert.ok(/点击取消/.test(String(btn.textContent)), '文案要写明再点一次就能取消,实际:' + btn.textContent);
+
+    // 再点一次 = 取消
+    btn._listeners.click();
+    await pending;
+    assert.ok(signal && signal.aborted === true, '取消必须真的把 abort 信号发出去');
+    assert.strictEqual(btn._classes.has('is-busy'), false, '取消后要去掉忙态');
+    assert.strictEqual(btn.getAttribute('aria-busy'), null, 'aria-busy 也要摘掉');
+    assert.strictEqual(String(btn.textContent), '🤖 AI 整理输入框', '取消后按钮文案复原');
+    assert.ok(/已取消/.test(String(elements['import-status'].textContent)),
+        '状态行要说"已取消",实际:' + elements['import-status'].textContent);
+});
+
 test('统一导入管道回归:PDF 能读就读进输入框,读不准按原因提示;.doc 双路不混;委托可用', async () => {
     const { onePagePdf, buildPdf } = await import('./helpers/pdf-fixture.mjs');
     const textPdf = onePagePdf('BT /F1 12 Tf 72 720 Td (Question: 1+1?) Tj T* (A. 1) Tj T* (B. 2) Tj T* (Answer: B) Tj ET');

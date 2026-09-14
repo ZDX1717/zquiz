@@ -363,6 +363,18 @@ h3 {
     background-color: var(--c-primary-hover);
 }
 
+/* 「正在进行」态(目前只有「🤖 AI 整理输入框」用):**按钮仍然可点**(再点一次 = 取消)。
+   ⚠️ 绝不能用 `disabled` 表示忙 —— 被 disabled 的按钮不再派发 click,文案里的"点击取消"就成了空话
+      (👤 2026-09-14 报的 bug)。这里用 `.is-busy` 换配色,并用 box-shadow 描边(不占布局,避免整排按钮抖动)。 */
+.action-btn.is-busy {
+    background-color: var(--c-surface);
+    color: var(--c-primary);
+    box-shadow: inset 0 0 0 1px var(--c-primary);
+}
+.action-btn.is-busy:hover {
+    background-color: var(--c-surface-alt);
+}
+
 .status-message {
     margin-top: 16px;
     padding: 8px 16px;

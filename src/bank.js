@@ -786,7 +786,12 @@ pasteInput.addEventListener('input', () => { aiSourcedContent = false; });
 
 export async function rescueAiOrganize() {
     if (rescueAiRunning) {  // 第二次点击 = 取消
-        if (rescueAiAbort) rescueAiAbort.abort();
+        if (rescueAiAbort) {
+            rescueAiAbort.abort();
+        } else {
+            // 没有 AbortController 的旧环境:按钮文案答应过"点击取消",就得有句实话,不能装死
+            showImportStatus('这次整理没法中途取消 —— 等它跑完,或刷新页面', 'warning');
+        }
         return;
     }
     const material = (pasteInput.value || '').trim() || (lastRawContent || '').trim();
@@ -806,8 +811,13 @@ export async function rescueAiOrganize() {
     rescueAiRunning = true;
     if (typeof AbortController !== 'undefined') rescueAiAbort = new AbortController();
     const signal = rescueAiAbort ? rescueAiAbort.signal : undefined;
+    // 🚨 运行中**绝不许 disable 这个按钮**(👤 2026-09-14 报"点了没反应,并不能取消"):
+    //    被 disabled 的按钮**不再派发 click 事件**,而它的文案正写着"点击取消" —— 于是取消永远点不到。
+    //    (单元测试里桩子不看 disabled,监听器照样能被调用,所以一直没暴露;真机上才现形。)
+    //    正确做法:按钮始终可点,用 `.is-busy` 表示"正在进行";再点一次走上面的 abort 分支。
     if (rescueAiBtn) {
-        rescueAiBtn.disabled = true;
+        rescueAiBtn.classList.add('is-busy');
+        rescueAiBtn.setAttribute('aria-busy', 'true');
         rescueAiBtn.textContent = '🤖 整理中…（点击取消）';
     }
     showImportStatus('🤖 AI 整理中…', 'success');
@@ -847,7 +857,8 @@ export async function rescueAiOrganize() {
         rescueAiRunning = false;
         rescueAiAbort = null;
         if (rescueAiBtn) {
-            rescueAiBtn.disabled = false;
+            rescueAiBtn.classList.remove('is-busy');
+            rescueAiBtn.removeAttribute('aria-busy');
             rescueAiBtn.textContent = '🤖 AI 整理输入框';
         }
     }
