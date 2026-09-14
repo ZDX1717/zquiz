@@ -459,7 +459,11 @@ function setupEventListeners() {
     // 粘贴导入
     pasteInput.addEventListener('paste', handlePasteEvent);
     pasteParseBtn.addEventListener('click', parsePastedText);
-    copyPromptBtn.addEventListener('click', copyOfficialPrompt);
+    // 🚨 必须包一层箭头函数:直接写 `addEventListener('click', copyOfficialPrompt)` 会把**事件对象**
+    //    当作第一个实参传给 copyOfficialPrompt(forcePromptOnly) —— MouseEvent 是真值,
+    //    于是每次点击都走"只要提示词"的分支:用户看到的正是"按钮写着复制提示词和题目,却只复制了提示词"
+    //    (👤 2026-09-13 报的这个 bug)。凡"首参是开关"的函数,一律不要裸着挂上去。
+    copyPromptBtn.addEventListener('click', () => copyOfficialPrompt());
     promptToggleBtn.addEventListener('click', togglePromptContent);
     viewAllBtn.addEventListener('click', () => setPreviewView(false));
     viewWarnedBtn.addEventListener('click', () => setPreviewView(true));

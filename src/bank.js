@@ -269,9 +269,12 @@ importStatus.addEventListener('click', (e) => {
     if (e && e.target && e.target.id === 'file-ai-copy-btn') copyOfficialPrompt(true);
 });
 
-export async function copyOfficialPrompt(forcePromptOnly = false) {
+// ⚠️ `forcePromptOnly` 用**严格等于 true** 判断,不用真值判断:这个函数曾经被裸挂成点击监听器,
+//    事件对象(MouseEvent)一进来就被当成 true → 静默变成"只复制提示词"。严格判断 + 监听器包箭头,双保险。
+export async function copyOfficialPrompt(forcePromptOnly) {
+    const promptOnly = forcePromptOnly === true;
     // forcePromptOnly:PDF/doc 场景没有文字可合并,只要提示词(防止误合并上一次的原文)
-    const material = forcePromptOnly ? '' : ((pasteInput.value || '').trim() || lastRawContent);
+    const material = promptOnly ? '' : ((pasteInput.value || '').trim() || lastRawContent);
     const ok = await copyText(buildCopyText(OFFICIAL_PROMPT, material));
     if (ok) {
         copyPromptBtn.textContent = material

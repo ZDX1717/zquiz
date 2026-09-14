@@ -261,6 +261,34 @@ test('AI 已连接徽章:测试成功后 ✓;配置变更未复测则熄灭', as
     assert.strictEqual(btn.textContent, '⚙ AI 设置');
 });
 
+test('「复制提示词和题目」必须把题目原文一起复制(👤 2026-09-13 报"只复制了提示词")', async () => {
+    // 🚨 这个 bug 的形态很典型:监听器写成 `addEventListener('click', copyOfficialPrompt)`,
+    //    浏览器**照例把事件对象当第一个实参传进去**,而那个参数是 forcePromptOnly 开关 ——
+    //    MouseEvent 是真值 → 每次都走"只要提示词"的分支。所以这里必须**照浏览器的样子**触发:
+    //    传事件对象,而不是"不带参数地调一下"(那样测不出任何东西)。
+    const copied = [];
+    const { run, elements } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
+        sandboxExtras: {
+            navigator: { clipboard: { writeText: async (t) => { copied.push(String(t)); } } },
+        },
+    }));
+    run('init()');
+    elements['paste-input'].value = '题目：1+1等于几\nA：1\nB：2\n答案：B';
+    await elements['copy-prompt-btn']._listeners.click({ type: 'click', target: elements['copy-prompt-btn'] });
+    assert.strictEqual(copied.length, 1, '应复制一次');
+    assert.ok(copied[0].includes('1+1等于几'), '复制内容里必须带题目原文,实际只拿到:' + copied[0].slice(-60));
+    assert.ok(copied[0].includes('需要整理的题目原文'), '应有分隔标题');
+    assert.ok(/已复制提示词\+题目/.test(String(elements['copy-prompt-btn'].textContent)),
+        '按钮应报"已复制提示词+题目",实际:' + elements['copy-prompt-btn'].textContent);
+
+    // 反向:PDF 那条路(file-ai-copy-btn)明确只要提示词,不能被顺手带上原文
+    copied.length = 0;
+    elements['import-status']._listeners.click({ target: { id: 'file-ai-copy-btn' } });
+    await new Promise(r => setImmediate(r));
+    assert.strictEqual(copied.length, 1, 'PDF 那条路也要复制一次');
+    assert.ok(!copied[0].includes('1+1等于几'), 'PDF 场景只要提示词(没有文字可合并),不许带上一位用户的原文');
+});
+
 test('救援区 B 路线:AI 接口整理 → 结果入输入框 → 解析后逐题带 AI 生成标记;手动编辑即失效', async () => {
     const { run, store, elements } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
         sandboxExtras: {

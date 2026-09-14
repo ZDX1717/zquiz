@@ -339,6 +339,23 @@ test('首页主卡片与救援区:文案里不许再塞括号补充(👤 2026-09
     assert.ok(!/[（(]/.test(ph), '提示词里不许有括号,实际:' + ph);
 });
 
+test('监听器不许把"首参是开关"的函数裸挂上去(👤 报"只复制了提示词"就是这么来的)', () => {
+    // ⚠️ 先剥注释:解释这条坑的注释里**原样写着**那行坏代码,不剥掉会把自己判红(踩过)
+    const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
+    const main = strip(readFileSync(path.join(root, 'src', 'main.js'), 'utf8'));
+    const bank = strip(readFileSync(path.join(root, 'src', 'bank.js'), 'utf8'));
+    // 🚨 曾经:`copyPromptBtn.addEventListener('click', copyOfficialPrompt)`。
+    //    浏览器把 **MouseEvent** 当第一个实参传进去,而那个参数是 forcePromptOnly 开关 ——
+    //    事件对象是真值 → 每次点击都走"只要提示词"分支:按钮写着"和题目",却只复制了提示词。
+    assert.ok(!/addEventListener\(\s*'click'\s*,\s*copyPromptBtn|addEventListener\(\s*'click'\s*,\s*copyOfficialPrompt\s*\)/.test(main),
+        'copyOfficialPrompt 不许裸挂成监听器(会把事件对象当开关参数)');
+    assert.ok(/copyPromptBtn\.addEventListener\('click', \(\) => copyOfficialPrompt\(\)\)/.test(main),
+        '应包一层箭头函数,不传任何开关');
+    // 第二道防线:开关参数本身必须严格判断 —— 万一别处又传了个事件对象,也不会静默降级
+    assert.ok(/const promptOnly = forcePromptOnly === true;/.test(bank),
+        'forcePromptOnly 必须严格等于 true 才算"只要提示词"');
+});
+
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {
     const cssText = String(cssNoComments);
     for (const sel of ['#home-section > .operation-card', '#banks-section > .banks-list']) {
