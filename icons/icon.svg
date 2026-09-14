@@ -8,8 +8,10 @@
   <!-- 底:圆角方(radius = 22%),主色渐变 -->
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
   <!-- 书本元素:立着的书,占画布 62.5%(320/512,四边留 96)。
-       ⚠️ 五张 PNG 的**主体尺寸必须一致**(apple-touch / maskable 也一样):
-       以前 maskable 为了躲"80% 安全圈"整体缩到 84%,于是同一套图标里大小不一(👤 反馈) -->
+       ⚠️ 这一套(icon-192/512、apple-touch、favicon)是 62.5%;
+          **maskable.svg 单独画 50%** —— 安卓会把 maskable 放大约 1.25 倍再套遮罩,
+          62.5% 过那一道就成了 78%,真机上看着"主体太大、占满整个方形"(👤 2026-09-14 报的)。
+          两张的差别只在这一点上,别把 maskable 也改回 62.5%,也别把蓝底缩小(那是另一个错)。 -->
   <rect x="96" y="96" width="320" height="320" rx="20" fill="#fff"/>
   <rect x="96" y="96" width="44" height="320" rx="20" fill="#dbeafe"/>
   <rect x="140" y="96" width="6" height="320" fill="#bfdbfe"/>

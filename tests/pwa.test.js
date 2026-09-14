@@ -109,47 +109,59 @@ test('图标像素:蓝底 + 立着的书 + 封面上的蓝色 Z + 右下角绿�
     assert.ok(isWhite(img.at(378, 384)) && isWhite(img.at(403, 373)), '徽章里应有一道白色对勾');
     assert.ok(isBlue(img.at(441, 412)), '徽章外应有一圈底色(镂空),把徽章从书上抠出来');
 
-    // ⑤ 主体尺寸要**统一**:同一套图标(any / maskable / touch)前景包围盒占比必须差不多 ——
-    //    以前 maskable 为了躲安全圈整体缩到 84%,同一套里大小不一(👤 反馈"有的太小了")
-    const bboxRatio = (file) => {
+    // ⑤ 主体尺寸:any / touch = 62.5%,**maskable = 50%**
+    //    🚨 别把三张写成同一个数字 —— 安卓会把 maskable **放大约 1.25 倍**再套遮罩
+    //    (让 80% 安全圈正好填满遮罩),62.5% 的图过这一道就成了 78%:
+    //    真机上表现为"主体太大、占满整个方形"(👤 2026-09-14 报的正是这个)。
+    //    画 50% ⇒ 放大后 ≈62.5%,与 any / touch 在真机上**看起来一样大**。
+    //    ⚠️ 也别把蓝底一起缩小(那是另一个错:同一套图标大小不一,👤 曾报"有的太小了")。
+    const bbox = (file) => {
         const png = decodePng(path.join(root, file));
-        let x0 = 1e9, x1 = -1;
+        let x0 = 1e9, x1 = -1, far = 0;
         for (let y = 0; y < png.h; y++) for (let x = 0; x < png.w; x++) {
             const p = png.at(x, y);
             if (!(isWhite(p) || isGreen(p))) continue;
             if (x < x0) x0 = x;
             if (x > x1) x1 = x;
+            far = Math.max(far, Math.hypot(x - png.w / 2, y - png.h / 2));
         }
-        return { w: png.w, ratio: (x1 - x0 + 1) / png.w };
+        return { w: png.w, ratio: (x1 - x0 + 1) / png.w, far };
     };
-    const ratios = ['icons/icon-512.png', 'icons/maskable-512.png', 'icons/apple-touch-icon-180.png'].map(bboxRatio);
-    for (const r of ratios) {
+    for (const f of ['icons/icon-512.png', 'icons/apple-touch-icon-180.png']) {
+        const r = bbox(f);
         assert.ok(r.ratio > 0.60 && r.ratio < 0.67,
-            `主体应占画布 60%~67%(统一),实测 ${(r.ratio * 100).toFixed(1)}% @${r.w}px`);
+            `${f} 主体应占画布 62.5%(60%~67%),实测 ${(r.ratio * 100).toFixed(1)}%`);
     }
+    // maskable 的**几何**主体 = 画布 50%,但这条量的是"白/绿像素的横向跨度"(书脊是浅蓝、不算白),
+    // 且徽章为了不越安全圈又往内挪了一点 ⇒ 实测 45.7%(icon-512 同一口径量出 63.5%)。
+    // 所以判据用**相对值**:≈0.8 倍(1 ÷ 1.25 = 0.8 就是安卓那道放大)。
+    const mkBbox = bbox('icons/maskable-512.png');
+    const rel = mkBbox.ratio / bbox('icons/icon-512.png').ratio;
+    assert.ok(rel > 0.68 && rel < 0.82,
+        `maskable 主体应比 any 那张小一档(≈0.8 倍),实测 ${rel.toFixed(2)}(maskable ${(mkBbox.ratio * 100).toFixed(1)}%)`);
+    assert.ok(mkBbox.ratio > 0.42,
+        `maskable 主体也不能小过头(👤 曾报"有的太小了"),实测 ${(mkBbox.ratio * 100).toFixed(1)}%`);
+    // ⑥ maskable 的**前景必须整体落在 80% 安全圈内**:圆形/圆角遮罩只保证这个圈里的内容不被裁
+    //    (半径 = 画布半宽 × 0.8 = 204.8)。踩过的坑:对勾徽章原本压在书角外侧,圆遮罩会切掉一半。
+    assert.ok(mkBbox.far <= 204.8,
+        `maskable 前景离中心最远 ${mkBbox.far.toFixed(1)},超出 80% 安全圈(204.8)会被遮罩裁掉`);
 
-    // ⑥ iOS 会把透明底填成黑/白块,所以 touch icon 必须不透明;maskable 由系统裁切,底必须铺满
+    // ⑦ iOS 会把透明底填成黑/白块,所以 touch icon 必须不透明;maskable 由系统裁切,底必须铺满
     for (const f of ['icons/apple-touch-icon-180.png', 'icons/maskable-512.png']) {
         const png = decodePng(path.join(root, f));
         assert.strictEqual(png.ch, 3, `${f} 不应带 alpha 通道`);
         assert.ok(isBlue(png.at(2, 2)), `${f} 的角上应是实心底色`);
     }
 
-    // ⑦ 内容既不超出圆形遮罩(半径 256,超出就会被裁),也不缩到安全圈里当"小图"
+    // ⑧ ⚠️ 先断言"前景真的存在":否则上面那些 bbox / 安全圈断言会因为整张图空白而**假通过**
     const mk = decodePng(path.join(root, 'icons/maskable-512.png'));
-    let far = 0, mkWhite = 0, mkGreen = 0;
+    let mkWhite = 0, mkGreen = 0;
     for (let y = 0; y < mk.h; y++) for (let x = 0; x < mk.w; x++) {
         const p = mk.at(x, y);
-        const w = isWhite(p), g = isGreen(p);
-        if (w) mkWhite++;
-        if (g) mkGreen++;
-        if (!(w || g)) continue;
-        const dx = x - 256, dy = y - 256, r = Math.hypot(dx, dy);
-        if (r > far) far = r;
+        if (isWhite(p)) mkWhite++;
+        if (isGreen(p)) mkGreen++;
     }
-    // ⚠️ 先断言"前景真的存在",否则后面的距离断言会因为整张图空白而假通过
-    assert.ok(mkWhite > 30000 && mkGreen > 3000, `maskable 里书本与徽章都必须在(白 ${mkWhite} / 绿 ${mkGreen})`);
-    assert.ok(far < 250, `maskable 前景离中心最远 ${far.toFixed(1)},超出圆形遮罩会挨裁(上限 256)`);
+    assert.ok(mkWhite > 25000 && mkGreen > 2500, `maskable 里书本与徽章都必须在(白 ${mkWhite} / 绿 ${mkGreen})`);
 });
 
 test('index.html:链接 manifest 与图标,并补 iOS 专用 meta 与亮暗两档 theme-color', () => {
