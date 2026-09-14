@@ -287,14 +287,18 @@ test('导入输入框的提示词:两条路都要说清(粘贴 / 选文件)(👤
     const m = html.match(/id="paste-input"[^>]*placeholder="([^"]*)"/);
     assert.ok(m, '输入框应有提示词');
     const ph = m[1];
-    // ① 用户第一眼要能看出"两条路":直接粘贴 / 选文件
-    assert.ok(ph.includes('粘贴'), '要写明可以直接粘贴');
-    assert.ok(ph.includes('选择文件'), '要写明也可以选文件导入');
+    // ① 👤 2026-09-13 定稿的写法:两条路各占一行,用「方式一 / 方式二」标出来
+    assert.ok(ph.includes('方式一') && ph.includes('方式二'),
+        '提示词要用「方式一 / 方式二」把两条路并列写清,实际:' + ph);
+    assert.ok(ph.includes('粘贴'), '方式一要写明可以直接粘贴');
+    assert.ok(ph.includes('选择文件'), '方式二要写明也可以选文件导入');
     // ② 说清哪些文件能吃(旧文案只提 txt/docx,用户以为 PDF/Word 不行)
-    assert.ok(/Word|docx/.test(ph), '要提到 Word');
+    assert.ok(/Word/.test(ph), '要提到 Word');
     assert.ok(/PDF/.test(ph), '要提到 PDF(PDF 会在选择后给出专门提示)');
-    // ③ 说明"读出来的文字会进输入框"(不然用户不知道读进哪去了)
-    assert.ok(/读进本框|填入/.test(ph), '要说明文件的文字会进输入框');
+    assert.ok(/txt/.test(ph), '要提到 txt');
+    assert.ok(ph.includes('目前支持'), '用"目前支持…"交代格式范围');
+    // ③ 手机上不许被框裁掉:占行数 ≤ 框能显示的行数(见「导入输入框:必须自动换行」那条的教训)
+    assert.ok(!/[（(]/.test(ph), '提示词里不该有括号补充');
 });
 
 test('救援区:只铺一条路 + 文案有预算(👤 2026-09-13 报"太啰嗦、重点不清楚")', () => {
