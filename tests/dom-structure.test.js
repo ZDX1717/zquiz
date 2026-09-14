@@ -173,19 +173,20 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
         const re = new RegExp(`id="${id}" class="action-btn[^"]*secondary`);
         assert.ok(re.test(home), `${id} 应是次要按钮(描边),不与主键争视觉重量`);
     }
-    // ③ 补救路径与参考材料默认**收起**(它们不是主任务,常驻会占掉手机半屏)
-    for (const id of ['ai-rescue', 'format-help']) {
-        assert.ok(new RegExp(`<details id="${id}" class="home-fold">`).test(home), `${id} 应是折叠块`);
-    }
-    assert.ok(!/<details id="(ai-rescue|format-help)"[^>]*\sopen/.test(home), '折叠块默认不展开');
+    // ③ 补救路径默认**收起**(它不是主任务,常驻会占掉手机半屏)。
+    //    参考材料(格式说明)不再走折叠块 —— 它收成了卡片右上角的「?」悬浮面板(见下一个测试)。
+    assert.ok(/<details id="ai-rescue" class="home-fold">/.test(home), 'ai-rescue 应是折叠块');
+    assert.ok(!/<details id="ai-rescue"[^>]*\sopen/.test(home), '折叠块默认不展开');
+    assert.ok(!home.includes('home-fold-summary">支持的题目格式'),
+        '格式说明不该再是首页底部那个常驻折叠块');
     // ④ 折叠块也走阅读档宽度(与首页卡片同宽,不然桌面上一宽一窄)
     assert.ok(/#home-section > \.home-fold[^{]*\{[^}]*max-width\s*:\s*var\(--reading-width\)/.test(cssNoComments),
         '首页折叠块应走阅读档宽度');
     assert.ok(/#home-section > \.install-hint[^{]*\{[^}]*max-width\s*:\s*var\(--reading-width\)/.test(cssNoComments),
         '「加到主屏」引导也走阅读档宽度(否则与首页其它模块不同宽)');
     // 引导必须在**最后**:它是最不重要的内容,不许挤到主任务前面
-    assert.ok(home.indexOf('install-hint') > home.indexOf('id="format-help"'),
-        '「加到主屏」引导应是首页最后一块(排在主任务/补救/参考之后)');
+    assert.ok(home.indexOf('install-hint') > home.indexOf('id="ai-rescue"'),
+        '「加到主屏」引导应是首页最后一块(排在主任务/补救之后)');
     // ⑤ 手机档:主键 ≥48px、次键 ≥40px —— 主次也体现在尺寸上
     const media = cssNoComments.slice(cssNoComments.indexOf('max-width: 768px'));
     assert.ok(/\.paste-primary\s*\{[^}]*min-height\s*:\s*48px/.test(cssNoComments),
@@ -203,6 +204,66 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
     // ⑦ 老规则不许复活:它把所有按钮拉成等宽,主次就没了
     assert.ok(!/\.paste-actions \.action-btn\s*\{[^}]*flex\s*:\s*1 1 auto/.test(cssNoComments),
         '「所有按钮等宽」的老规则会把主次抹平,不许复活');
+});
+
+test('首页「?」= 支持的题目格式悬浮面板(👤 2026-09-13:去掉底部折叠块,改挂输入框模块右上角)', () => {
+    const home = html.slice(html.indexOf('id="home-section"'), html.indexOf('id="quiz-section"'));
+    // ① 位置:在**导入卡片**的 head 里、输入框之前;且在「⚙ AI 设置」右侧(右上角区域)
+    const headIdx = home.indexOf('class="card-head"');
+    const helpIdx = home.indexOf('id="format-help-btn"');
+    const textareaIdx = home.indexOf('id="paste-input"');
+    assert.ok(headIdx > -1 && helpIdx > headIdx && helpIdx < textareaIdx,
+        '「?」应在导入卡片的头部(输入框模块右上角),不是页面底部');
+    assert.ok(helpIdx > home.indexOf('id="ai-settings-btn"'),
+        '「?」应排在「⚙ AI 设置」右侧 —— 那一行才是右上角');
+    // ② ⚠️ 两个行内控件必须包一组:`.card-head` 是 space-between,三个孩子会被平摊到左/中/右
+    const actions = home.slice(home.indexOf('class="card-head-actions"'), home.indexOf('id="format-help-btn"'));
+    assert.ok(actions.includes('ai-settings-btn'), '「⚙ AI 设置」与「?」应在同一个 .card-head-actions 组里');
+    assert.ok(/\.card-head-actions\s*\{[^}]*display\s*:\s*flex/.test(cssNoComments),
+        '.card-head-actions 应是 flex 行');
+    // ③ 内容搬过来了(格式说明的正文不许丢)
+    const panel = home.slice(home.indexOf('class="home-help-panel"'), home.indexOf('</details>'));
+    for (const kw of ['支持的题目格式', '字段式', '判断题', '参考答案', '自动识别']) {
+        assert.ok(panel.includes(kw), `悬浮面板里应有「${kw}」`);
+    }
+    // ④ 默认收起 + 悬浮(不占文档流):[open] 控制 + 闭合显式 display:none + absolute + 悬浮菜单档 z-index
+    assert.ok(/<details id="format-help" class="home-help">/.test(home), '应是 details.home-help,且默认不带 open');
+    assert.ok(/\.home-help:not\(\[open\]\) > \.home-help-panel \{ display: none; \}/.test(cssNoComments),
+        '闭合态必须显式 display:none(闭合的 details 在本机 chromium 上仍会渲染 children)');
+    const panelRule = cssNoComments.match(/\n\.home-help-panel \{([^}]*)\}/);
+    assert.ok(panelRule, '应有 .home-help-panel 的规则');
+    assert.ok(/position\s*:\s*absolute/.test(panelRule[1]), '面板应 absolute 悬浮,不占文档流');
+    assert.ok(/z-index\s*:\s*60/.test(panelRule[1]), '面板走「悬浮菜单」档 z-index:60(见 DESIGN §3.8)');
+    assert.ok(/max-height\s*:\s*60vh/.test(panelRule[1]) && /overflow-y\s*:\s*auto/.test(panelRule[1]),
+        '面板不许撑高页面:60vh + 自己滚');
+    assert.ok(/right\s*:\s*0/.test(panelRule[1]), '贴触发器右边,避免往右溢出屏幕');
+    // ⑤ 触发器是圆形小键,**不是**第二个主色实心按钮(首页只许有一个)
+    const btnRule = cssNoComments.match(/\n\.home-help-btn \{([^}]*)\}/);
+    assert.ok(btnRule && /border-radius\s*:\s*50%/.test(btnRule[1]), '问号键应是圆形');
+    assert.ok(/width\s*:\s*24px/.test(btnRule[1]) && /height\s*:\s*24px/.test(btnRule[1]), '问号键 24×24');
+    assert.ok(!/background\s*:\s*var\(--c-primary\)/.test(btnRule[1]),
+        '问号键不许染主色实心 —— 首页只有一个实心主键');
+    assert.ok(/::\-webkit\-details\-marker \{ display: none; \}/.test(cssNoComments),
+        '要去掉 summary 默认的三角标记');
+    // ⑥ 点外面收起 + Esc 收起(浮层不能点不掉)
+    const main = readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
+    assert.ok(/formatHelpDetails/.test(main) && /formatHelpWrap/.test(main), 'main.js 应持有这两个引用');
+    assert.ok(/!formatHelpDetails \|\| !formatHelpDetails\.open\) return;/.test(main) && /formatHelpDetails\.open = false;/.test(main),
+        'main.js 应有点击外部 / Esc 的收起逻辑');
+    assert.ok(/'Escape'/.test(main), 'Esc 也应能关掉这个悬浮面板');
+    // ⑦ 🚨 卡头规则各归各家:`.card-head` 两处共用,弹窗那条写在文件后面会**整条泄漏**到首页卡头
+    //    (实测:justify-content:center + padding:0 48px 0 8px → 控件被挤在中间、右边空出 48px,
+    //     那是给弹窗 ✕ 留的位置 —— 于是"右上角按钮"永远贴不到右上角)
+    assert.ok(/\.edit-card \.card-head \{/.test(cssNoComments),
+        '弹窗卡头规则必须限定在 .edit-card 里(不然会漏到首页卡头)');
+    assert.ok(!/\n\.card-head \{\n\s*position: relative;/.test(cssNoComments),
+        '不许再有裸 .card-head { position: relative } —— 那是弹窗那条的泄漏源');
+    const homeHead = cssNoComments.match(/\n\.home-import \.card-head \{([^}]*)\}/);
+    assert.ok(homeHead, '首页卡头应有自己的规则');
+    assert.ok(/justify-content\s*:\s*space-between/.test(homeHead[1]), '首页卡头:h3 在左、动作组贴右');
+    assert.ok(/padding\s*:\s*0;/.test(homeHead[1]), '首页卡头不许留弹窗 ✕ 的那 48px 右侧留白');
+    assert.ok(/position\s*:\s*relative/.test(homeHead[1]),
+        '首页卡头要 relative —— 手机档(此时 .home-help 是 static)的悬浮面板靠它定位');
 });
 
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {

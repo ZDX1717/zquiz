@@ -2196,6 +2196,103 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     background: var(--c-ai-connected-bg);
     font-weight: 600;
 }
+/* ⚠️ `.card-head` 是 space-between:放进第三个孩子,三者会被**平摊**(标题左、中间、右)。
+   多个行内控件必须**包一组**,才一起贴右(与题库页 `.banks-header-actions` 同一手法)。 */
+.card-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ---- 卡片右上角的「?」= 支持的题目格式悬浮面板(👤 2026-09-13)----
+   原来它是首页底部一个常驻折叠块(`#format-help.home-fold`),占一屏位置上的一块;
+   格式说明是"要用时才查"的参考资料,挂在**输入框模块的右上角**才对位。
+   ⚠️ 与回收站同一套路:浮层用 absolute(不占文档流)+ `[open]` 显式控制显隐
+      —— 本机 chromium 上闭合的 details **仍会渲染 children**(DESIGN §3.7 记过这个坑)。 */
+.home-help { position: relative; display: inline-flex; }
+/* 首页导入卡的卡头 = **自己一套**(不再靠弹窗那条漏过来的规则):👤 2026-09-13 要求
+   「?」在"输入框模块的右上角",而漏过来的 `padding: 0 48px 0 8px` + `justify-content:center`
+   会把控件永远挤在中间(右边还空着 48px)。这里回到 §3.7 的口径:h3 在左、动作组贴右、无多余右侧留白;
+   底部分隔线 / 44px 最小高 / 15px 标题保持**原来的观感**(👤 没要求改观感,就不改)。 */
+.home-import .card-head {
+    position: relative;          /* 手机档悬浮面板(static 的 .home-help)的定位参照 */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-height: 44px;
+    padding: 0;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--c-border-light);
+}
+.home-import .card-head h3 { margin: 0; font-size: 15px; }
+.home-help-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--c-border);
+    border-radius: 50%;              /* 圆形,与相邻的胶囊「⚙ AI 设置」区分开 */
+    background: none;
+    color: var(--c-text-secondary);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    cursor: pointer;
+    list-style: none;                /* 去掉 summary 的三角 */
+}
+.home-help-btn::-webkit-details-marker { display: none; }
+.home-help-btn:hover,
+.home-help[open] .home-help-btn {
+    border-color: var(--c-primary);
+    color: var(--c-primary);
+}
+.home-help-panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;                        /* 贴触发器右边,不会往右溢出 */
+    z-index: 60;                     /* 悬浮菜单档(见 DESIGN §3.8) */
+    width: min(440px, calc(100vw - 32px));
+    max-height: 60vh;                /* 悬浮面板不许撑高页面 */
+    overflow-y: auto;
+    padding: 12px 14px;
+    background: var(--c-surface);
+    border: 1px solid var(--c-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);   /* 阴影只给悬浮层,卡片静态态不加 */
+}
+.home-help:not([open]) > .home-help-panel { display: none; }   /* 🚨 闭合时必须显式隐藏 */
+.home-help-panel > p:first-child { margin-top: 0; }
+.home-help-panel > p:last-child { margin-bottom: 0; }
+.home-help-title {
+    margin-bottom: 6px;
+    font-weight: 600;
+    color: var(--c-text);
+}
+.home-help-panel pre {
+    margin: 10px 0;
+    padding: 10px;
+    overflow-x: auto;
+    background: var(--c-surface-alt);
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre;
+}
+/* 🚨 手机档:面板**不能**再按触发器右对齐 —— 触发器在卡片最右,面板 358px 宽右对齐后
+   左边缘会跑到屏幕外(实测 left = -97px)。改为锚定**整张卡片头部**:`.home-help` 取消定位,
+   面板左右都贴头部的边(手机上面板本来就该占满宽度)。 */
+@media (max-width: 768px) {
+    .home-help { position: static; }
+    .home-help-panel {
+        left: 0;
+        right: 0;
+        width: auto;
+        max-height: 50vh;   /* 更矮一点:手机上一屏还要留出卡片与状态行 */
+    }
+}
 /* 卡片内背景说明小字(原为 index.html 内联 style,无暗色适配) */
 .meta-note {
     font-size: 0.85em;
@@ -3552,7 +3649,12 @@ html.is-standalone .install-hint { display: none !important; }
     padding: 0;                 /* 卡片自己管三段的内边距,padding 会破坏"底部固定" */
     overflow: hidden;           /* 滚动只发生在 .card-body */
 }
-.card-head {
+/* 🚨 必须限定在 .edit-card 里(2026-09-13 发现):`.card-head` 这个类名**两处共用**
+   (首页导入卡 + 编辑题目弹窗),而这条规则写在文件更后面 —— 于是整条泄漏到了首页卡头上:
+   `justify-content:center`(标题与右上角控件被挤在中间)、`padding:0 48px 0 8px`(右边空出
+   48px,那是给弹窗 ✕ 留的位置)、底边框、44px 最小高。表现就是"右上角控件永远贴不到右上角"。
+   → 弹窗自己用 `.edit-card .card-head`,首页卡头在下面自己写一条(见 .home-import 那一节)。 */
+.edit-card .card-head {
     position: relative;         /* 关闭键绝对定位的参照 */
     display: flex;
     align-items: center;
@@ -3563,7 +3665,7 @@ html.is-standalone .install-hint { display: none !important; }
     padding: 0 48px 0 8px;      /* 右侧留出 40px 关闭键的位置 */
     border-bottom: 1px solid var(--c-border-light);
 }
-.card-head h3 {
+.edit-card .card-head h3 {
     margin: 0;                  /* 基础 .modal-content h3 有 24px 下边距,这里必须归零 */
     font-size: 15px;
     font-weight: 600;

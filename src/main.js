@@ -107,6 +107,9 @@ const previewTargetBankSelect = document.getElementById('preview-target-bank');
 const previewBankModeInputs = Array.prototype.slice.call(document.querySelectorAll('input[name="preview-bank-mode"]'));
 const recycleBinDetails = document.getElementById('recycle-bin');
 const recycleMenu = document.querySelector('.recycle-menu');
+// 首页卡片右上角的「?」= 支持的题目格式悬浮面板(👤 2026-09-13;原来是首页底部的折叠块)
+const formatHelpDetails = document.getElementById('format-help');
+const formatHelpWrap = document.querySelector('.home-help');
 const previewOverwrite = document.getElementById('preview-overwrite');
 const previewConfirmBtn = document.getElementById('preview-confirm-btn');
 const previewCancelBtn = document.getElementById('preview-cancel-btn');
@@ -368,6 +371,22 @@ function setupEventListeners() {
         while (p) { if (p === recycleMenu) return; p = p.parentNode; }   // 桩里没有 contains,用 parentNode 走
         if (t === recycleMenu) return;
         recycleBinDetails.open = false;
+    });
+    // 首页「?」悬浮面板:同一套处理 —— 点它外面收起(⚠️ 点**摘要**本身不处理,
+    // 否则会在原生的开合之后再被关掉,表现成"点了没反应")。桌面/手机都支持 Esc 关闭。
+    const insideHelp = (node) => {
+        let p = node;
+        while (p) { if (p === formatHelpWrap) return true; p = p.parentNode; }
+        return false;
+    };
+    document.addEventListener('click', (e) => {
+        if (!formatHelpDetails || !formatHelpDetails.open) return;
+        if (insideHelp(e && e.target)) return;
+        formatHelpDetails.open = false;
+    });
+    document.addEventListener('keydown', (e) => {
+        if (!formatHelpDetails || !formatHelpDetails.open) return;
+        if (e && e.key === 'Escape') formatHelpDetails.open = false;
     });
 
     // 题目列表重构(👤 2026-09-12):筛选面板 / 批量操作栏 / 编辑卡片
