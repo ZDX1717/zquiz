@@ -14,6 +14,8 @@
 // ⚠️ 与 docx.js 的分工:docx 是结构化的 XML,PDF 是一堆字节流。这里所有函数都是
 //    "字节进、文本出",不碰 DOM,也不依赖调用方的任何状态。
 
+import { scoreText } from './decode.js';
+
 const PDF_MAGIC = '%PDF-';
 const MAX_BYTES = 64 * 1024 * 1024;      // 防御:超大文件直接拒(手机内存有限)
 const MAX_OBJECTS = 200000;              // 防御:畸形文件别把扫描拖成死循环
@@ -682,6 +684,11 @@ export function collectRuns(content, fontTable = { byName: new Map() }) {
             alongCoord: along,                           // 沿"前进方向":横排=行内次序,竖排=第几列
             advEnd: along + em * effSize,                // 这段字排完,笔走到哪
             measured,                                    // 宽度是真实 /Widths 还是估算
+            // ⚠️ "没映射"必须以**结果**为准,不是"字体缺 ToUnicode 条目":
+            //    简单字体没有 ToUnicode 也照样能靠 CP1252/GBK 解出正确答案(实测的英文卷子就是),
+            //    按"字体缺条目"统计会把好好的文件整份判死。只有 CID 无映射(必吐替换符)
+            //    或解出来真带替换符,才算这段字不对。
+            unmapped: (!!font && font.isCid && !font.cmap) || /\uFFFD/.test(text),
             tjGap: pendingTjGap,                         // 紧跟在 TJ 大位移后面(那是明确的空隙)
             size: effSize,
             forced,
@@ -721,7 +728,14 @@ export function collectRuns(content, fontTable = { byName: new Map() }) {
             // CID 字体没带 ToUnicode:抽出来必是乱码,用替换符标记,交给闸门判定
             return '\uFFFD'.repeat(Math.ceil(raw.length / 2));
         }
-        return cp1252ToUnicode(raw);
+        // 简单字体没带 ToUnicode:字节可能是 **GBK 编的中文**(国产排版工具常见),
+        // 也可能是 WinAnsi/Latin-1。两种都解一遍,按**乱码分**挑更好的那个 ——
+        // 一律按 CP1252 解的话,中文会变成 "äÞ" 那种怪字(实测踩过)。
+        const latin = cp1252ToUnicode(raw);
+        if (!/[\u0080-\u00ff]/.test(raw)) return latin;          // 纯 ASCII:没有歧义
+        const gbk = decodeGbk(raw);
+        if (!gbk) return latin;
+        return scoreText(gbk) < scoreText(latin) ? gbk : latin;
     };
 
     const tokens = tokenizeContent(content);
@@ -876,11 +890,15 @@ function runsToText(runs) {
     }
     const text = out.join('\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     lastRunStats.bigGapRatio = runs.length ? bigGap / runs.length : 0;
+    const kept = runs.filter(r => !r.drop);
+    const unmappedChars = kept.filter(r => r.unmapped).reduce((n, r) => n + r.text.length, 0);
+    const allChars = kept.reduce((n, r) => n + r.text.length, 0) || 1;
+    lastRunStats.unmappedRatio = unmappedChars / allChars;
     return text;
 }
 
 // 最近一次抽文本的中间统计(仅供 pdfToText 交给闸门,不对外承诺稳定)
-export const lastRunStats = { bigGapRatio: 0 };
+export const lastRunStats = { bigGapRatio: 0, unmappedRatio: 0 };
 
 // 内容流词法:只切出我们关心的东西(字符串 / 数字 / 名字 / 数组 / 算子)
 function tokenizeContent(s) {
@@ -944,6 +962,17 @@ function tokenizeContent(s) {
         i++;
     }
     return tokens;
+}
+
+// 把 latin1 字符串按原字节喂给 GB18030 解码器(GBK 是它的子集)
+function decodeGbk(raw) {
+    try {
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i) & 0xff;
+        return new TextDecoder('gb18030').decode(bytes);
+    } catch (e) {
+        return null;                                              // 平台不支持该编码
+    }
 }
 
 // Windows-1252 的 0x80~0x9F 段与 ASCII 之外的常见缺口
@@ -1096,9 +1125,22 @@ export function pdfTextGate(text, stats = {}) {
             return { ok: false, reason: 'fontmap', detail: `抽出的文字里约 ${Math.round(ratio * 100)}% 是乱码/私有区字符(字体没带 Unicode 映射)` };
         }
     }
-    // 结构判据:用了 CID 字体却没有一张带中文的映射表 —— 典型的"中文抽成乱码"
-    if (stats.cidFontsWithoutMap > 0 && stats.cjkCount === 0) {
+    // 字体映射:按**受影响的比例**分档,不搞一刀切。
+    // 很多真实卷子只有个别装饰字/生僻字出自没映射的字体,整份文件照样能导入 ——
+    // 一刀切会把"能读九成"的卷子判死(👤 2026-09-14 报的就是这个)。
+    // 兜底:调用方没给比例(单元测试/老调用)时,退回原来的结构判据
+    if (stats.unmappedRatio === undefined && stats.cidFontsWithoutMap > 0 && stats.cjkCount === 0) {
         return { ok: false, reason: 'fontmap', detail: '这份 PDF 用的是 CID 字体却没带 ToUnicode 映射,中文抽出来必是乱码' };
+    }
+    const unmapped = stats.unmappedRatio || 0;
+    if (unmapped > 0.2) {
+        return { ok: false, reason: 'fontmap', detail: `约 ${Math.round(unmapped * 100)}% 的文字出自没有 Unicode 映射的字体,抽出来是乱码` };
+    }
+    if (unmapped > 0.02) {
+        return {
+            ok: true, reason: '', detail: '',
+            warn: `其中约 ${Math.round(unmapped * 100)}% 的字可能不对(原文件用了没带映射的字体),导入后请核对`,
+        };
     }
     if (chars === 0) {
         return { ok: false, reason: 'scanned', detail: '没抽到任何文字,基本可以确定是扫描件或图片版 PDF' };
@@ -1147,6 +1189,10 @@ export async function pdfToText(arrayBuffer) {
         if (f.isCid && !f.hasToUnicode) cidFontsWithoutMap++;
     }
     const cjkCount = (text.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g) || []).length;
-    const gate = pdfTextGate(text, { cidFontsWithoutMap, cjkCount, bigGapRatio: lastRunStats.bigGapRatio });
+    const gate = pdfTextGate(text, {
+        cidFontsWithoutMap, cjkCount,
+        bigGapRatio: lastRunStats.bigGapRatio,
+        unmappedRatio: lastRunStats.unmappedRatio,
+    });
     return { text, pages, gate, stats: { objects: objects.size, cidFontsWithoutMap, cjkCount, removedOverlay } };
 }

@@ -206,7 +206,11 @@ test('pdf.js 必须零依赖零 DOM(纯函数,可单测)', () => {
     //    不剥掉守卫会把自己判红(这个坑在 .card-head 那条守卫上已经踩过一次)
     const src = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'pdf.js'), 'utf8')
         .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '');
-    assert.ok(!/^\s*import\s/m.test(src), 'pdf.js 不许 import 任何东西(包括产品模块)');
+    // 只许依赖 **lib 层纯函数**(现在依赖 decode.js 的乱码打分,用于"字体没 ToUnicode 时按 GBK 试解");
+    // 业务模块一律不许依赖(那会把解析器和应用状态绑死)。
+    assert.ok(!/from '\.\/(bank|main|state|storage|parser|dom|quiz|errorbook|favorites|theme|undo|ai|prompt)\.js'/.test(src),
+        'pdf.js 只许依赖 lib 层纯函数,不许依赖业务模块');
+    assert.ok(/from '\.\/decode\.js'/.test(src), '应该复用 decode.js 的乱码打分(而不是自己再写一套)');
     assert.ok(!/\bdocument\b/.test(src), 'PDF 解析不许碰 DOM');
     assert.ok(!/localStorage|state\./.test(src), '不许碰存储与全局 state');
     assert.ok(/DecompressionStream/.test(src), '解 FlateDecode 用平台自带的 DecompressionStream(零依赖)');
@@ -561,4 +565,30 @@ test('每行都重复的叠加文字(水印/页眉)会被清掉;正文不受影�
     assert.ok(stats.removedOverlay > 0, '应识别并清掉重复的叠加文字,实际清了 ' + stats.removedOverlay);
     assert.ok(!/WATERMARK/.test(text), '叠加文字不该出现在结果里,实际:' + JSON.stringify(text));
     assert.ok(/AAAA/.test(text) && /BBBB/.test(text), '正文必须原样保留:' + JSON.stringify(text));
+});
+
+test('PDF 里 GBK 编码的文字串也能读对(国产排版工具常见)', async () => {
+    // 简单字体没带 ToUnicode 时,字节可能是 **GBK 编的中文** —— 一律按 CP1252 解会得到 "äÞ" 那种怪字。
+    // 现在两种都解一遍,按乱码分挑更好的(复用 src/decode.js 的打分)。
+    const gbk = [0xCC, 0xE2, 0xC4, 0xBF, 0xA3, 0xBA, 0x31, 0x2B, 0x31, 0x20, 0xB5, 0xC8, 0xD3, 0xDA, 0xBC, 0xB8];
+    const paint = gbk.map(b => '\\' + b.toString(8).padStart(3, '0')).join('');
+    const { text, gate } = await pdfToText(onePagePdf(`BT /F1 12 Tf 72 720 Td (${paint}) Tj ET`));
+    assert.strictEqual(text, '题目：1+1 等于几', '实际:' + JSON.stringify(text));
+    assert.strictEqual(gate.ok, true);
+    // 反向:普通拉丁文本不许被 GBK 抢走
+    const latin = await pdfToText(onePagePdf('BT /F1 12 Tf 72 720 Td (Hello world from a plain font) Tj ET'));
+    assert.ok(/Hello world/.test(latin.text), '实际:' + JSON.stringify(latin.text));
+});
+
+test('字体映射按比例分档:九成能读就放进(带提醒),大面积乱码才拦', () => {
+    const okText = '正常的题干文字,一二三四五六七八九十,长度足够长以便通过长度检查。';
+    // 大面积不对 ⇒ 拦
+    assert.strictEqual(pdfTextGate(okText, { unmappedRatio: 0.5 }).reason, 'fontmap');
+    assert.strictEqual(pdfTextGate(okText, { unmappedRatio: 0.5 }).ok, false);
+    // 个别字不对 ⇒ 放行,但带提醒(👤 2026-09-14 报的"以前能读现在被拦"就是一刀切造成的)
+    const warn = pdfTextGate(okText, { unmappedRatio: 0.05 });
+    assert.strictEqual(warn.ok, true, '九成能读就该放行');
+    assert.ok(/可能不对/.test(warn.warn || ''), '要带一句提醒:' + JSON.stringify(warn));
+    // 完全没有 ⇒ 连提醒都没有
+    assert.strictEqual(pdfTextGate(okText, { unmappedRatio: 0 }).warn, undefined);
 });

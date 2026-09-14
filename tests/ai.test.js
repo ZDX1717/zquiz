@@ -289,6 +289,29 @@ test('「复制提示词和题目」必须把题目原文一起复制(👤 2026-
     assert.ok(!copied[0].includes('1+1等于几'), 'PDF 场景只要提示词(没有文字可合并),不许带上一位用户的原文');
 });
 
+test('选一个 GBK 编码的 txt:文字正确进输入框,并说明按什么编码解的', async () => {
+    const { run, elements } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
+        sandboxExtras: {
+            // ⚠️ 这个类是**宿主 realm** 的(定义在测试文件里),它的方法看不到沙箱全局,
+            //    所以字节直接写死在这里,不能引用沙箱里的变量(踩过:__gbk is not defined)。
+            FileReader: class {
+                readAsArrayBuffer() {
+                    // GBK 字节("题目：1+1 等于几"):用平台解码器反查得到,已核对
+                    this.result = Uint8Array.from([0xCC, 0xE2, 0xC4, 0xBF, 0xA3, 0xBA,
+                        0x31, 0x2B, 0x31, 0x20, 0xB5, 0xC8, 0xD3, 0xDA, 0xBC, 0xB8]).buffer;
+                    this.onload({ target: { result: this.result } });
+                }
+            },
+        },
+    }));
+    run('init()');
+    run(`handleFileSelect({ target: { files: [{ name: '题目.txt' }] } })`);
+    assert.strictEqual(String(run(`pasteInput.value`)), '题目：1+1 等于几', 'GBK 文本要解对');
+    const status = String(elements['import-status'].textContent);
+    assert.ok(/GB18030/.test(status), '要说明按什么编码解的,实际:' + status);
+    assert.ok(String(elements['import-status'].className).includes('success'));
+});
+
 test('救援区 B 路线:AI 接口整理 → 结果入输入框 → 解析后逐题带 AI 生成标记;手动编辑即失效', async () => {
     const { run, store, elements } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
         sandboxExtras: {
@@ -426,7 +449,14 @@ test('导入按钮职责分离回归:选文件即读进框;解析按钮单监听
     const { run, elements, alerts } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
         sandboxExtras: {
             // 同步版 FileReader:构造即回调 onload
-            FileReader: class { readAsText(f) { this.result = '1. 试卷题 A.甲 B.乙 答案：A'; this.onload({ target: { result: this.result } }); } },
+            // 同步版 FileReader:构造即回调 onload。⚠️ bank.js 现在用 readAsArrayBuffer
+            //    (要按字节自己解码,GBK/编码识别 —— 见 src/decode.js),桩必须跟着提供它。
+            FileReader: class {
+                readAsArrayBuffer() {
+                    this.result = new TextEncoder().encode('1. 试卷题 A.甲 B.乙 答案：A').buffer;
+                    this.onload({ target: { result: this.result } });
+                }
+            },
         },
     }));
     run(`init()`);

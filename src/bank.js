@@ -5,6 +5,7 @@ import { downloadFile, hideModal, showModal } from './dom.js';
 import { pushUndo, undo as undoStep, redo as redoStep, canUndo, canRedo, undoLabel, redoLabel, clearUndo, assignExact, cloneQuestion } from './undo.js';
 import { docxToText } from './docx.js';
 import { pdfToText } from './pdf.js';
+import { decodeTextBytes, scoreText } from './decode.js';
 import { OFFICIAL_PROMPT, buildCopyText, copyText } from './prompt.js';
 import { toggleFavorite } from './favorites.js';
 import { aiConfigReady, aiFixQuestions, aiAnswerQuestions, aiBaseUrlProblem, aiFormatMaterial, aiMatchKey, aiDiffParts, buildAiNotes, getProvider, mergeAiAnswers, normalizeAiConfig, questionsNeedingAi, testConnection } from './ai.js';
@@ -135,7 +136,12 @@ function readFileIntoBox(file) {
                 // 闸门说不行就不导入:扫描件/乱码硬塞进输入框,用户得逐题核对才发现问题,
                 // 比"什么都没有"更害人 —— 这里给原因 + 两条替代路。
                 if (!gate.ok) { showPdfNotice(gate.reason, gate.detail); return; }
-                fillBox(text, 'PDF 文档', { status: (n) => `PDF 已读出 ${n} 字并填入输入框 · 版式可能与原文不同,核对后点「解析并预览」` });
+                // 闸门给的"小毛病"提醒(如"个别字可能不对")不拦人,只写在状态行里
+                const warn = gate.warn ? ` · ${gate.warn}` : '';
+                fillBox(text, 'PDF 文档', {
+                    status: (n) => `PDF 已读出 ${n} 字并填入输入框 · 版式可能与原文不同,核对后点「解析并预览」${warn}`,
+                    warn: !!gate.warn,
+                });
             })
             .catch(err => {
                 const msg = err && err.message ? err.message : '文件可能损坏';
@@ -170,7 +176,7 @@ function readFileIntoBox(file) {
         const msg = opts.status
             ? opts.status(text.length)
             : `${label}已读出 ${text.length} 字并填入输入框——可直接编辑，点「解析并预览」继续`;
-        showImportStatus(msg, 'success');
+        showImportStatus(msg, opts.warn ? 'warning' : 'success');
     }
 
     if (name.endsWith('.docx')) {
@@ -183,12 +189,23 @@ function readFileIntoBox(file) {
 
     const reader = new FileReader();
     reader.onload = function(event) {
-        fillBox(String(event.target.result), '文件');
+        // ⚠️ 必须按**字节**读、自己解码:`readAsText` 一律按 UTF-8 解,而中文 Windows 存的
+        //    txt / csv 多是 GBK ⇒ 整篇乱码(👤 想法 P1-9 记的那条)。见 src/decode.js。
+        const { text, encoding } = decodeTextBytes(event.target.result);
+        if (scoreText(text) > 60) {
+            // 二进制文件被改名成 .txt 之类:读出来是一堆控制字符,别往输入框里倒
+            showImportStatus('这个文件不像文本文件,读出来是乱码 —— 换一个文件试试', 'warning');
+            return;
+        }
+        if (encoding === 'utf-8') { fillBox(text, '文件'); return; }
+        fillBox(text, '文件', {
+            status: (n) => `文件已读出 ${n} 字 · 按 ${encoding.toUpperCase()} 解码 · 核对后点「解析并预览」`,
+        });
     };
     reader.onerror = function() {
         showImportStatus('读取失败：文件读取出错', 'error');
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
 }
 
 

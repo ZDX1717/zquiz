@@ -106,6 +106,10 @@ export async function loadApp({ confirmResult = true, promptValue = 'x', sandbox
         // 表现为"AI 请求压根没发出去",而报错信息完全指不到沙箱头上(踩过)。
         URL,
         URLSearchParams,
+        // vm 上下文里**没有** TextDecoder/TextEncoder。产品的编码识别(src/decode.js)要用它们,
+        // 缺了就会在"选择文件"那条路上抛 ReferenceError —— 报错还指不到沙箱头上(与当初补 URL 同一个坑)。
+        TextDecoder,
+        TextEncoder,
         ...sandboxExtras,
         document: {
             getElementById: (id) => (elements[id] ||= makeEl()),
