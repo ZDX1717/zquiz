@@ -80,7 +80,11 @@ export const JUDGE_FALSE_RE = /^(错|错误|×|X|F|N)$/i;
 export function splitInlineOptions(text, { startFromAny = false } = {}) {
     // 分组1=前导字符(题干裁剪时保留),分组2=选项字母
     // 分隔符含全/半角逗号(与 OPTION_LINE_RE 一致)——真实语料存在 "C.xxx D,yyy" 混排布局
-    const re = /(^|[\s(（,，;；。？！：、…""''「」『』（）【】《》<>])\s*([A-Ha-h])\s*[.、:：．)）,，,]\s*/g;
+    // ⚠️ 分隔符里**必须有 CJK 汉字**:PDF 抽出来的卷子常常两个选项首尾相接
+    //(原版式是两栏,A 列文字正好接到 B 列),既没有空格也没有标点 ——
+    // 只有把它们当成分隔才能切出 4 个选项(👤 的真文件就是这样)。
+    // 安全性由后面的两条校验兜着:必须从 A 开始、必须连续(A/B/C/D)。
+    const re = /(^|[\s(（,，;；。？！：、…""''「」『』（）【】《》<>\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff])\s*([A-Ha-h])\s*[.、:：．)）,，,]\s*/g;
     const markers = [];
     let m;
     while ((m = re.exec(text)) !== null) {

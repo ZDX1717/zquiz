@@ -269,3 +269,24 @@ test('展示用答案:判断题显示「对/错」而非 A/B,选择题附选项�
     assert.strictEqual(formatAnswerForDisplay(null, single), '');
     assert.strictEqual(formatAnswerForDisplay('A'), 'A');
 });
+test('行内选项:两栏排版首尾相接也要能切(A.xxxB.yyy → A/B 两项)', () => {
+    // 👤 的真文件(《强化练习(二案例型选择题)》)由转换工具生成:选项原版式是两栏,
+    // 抽出来 A 列文字正好接到 B 列,既没空格也没标点 —— 不把汉字当分隔符就只能认出 2 个选项。
+    const one = splitInlineOptions('A.故意杀人罪和破坏交通工具罪B.爆炸罪', { startFromAny: true });
+    assert.ok(one, '应能拆开首尾相接的选项');
+    assert.deepStrictEqual(Object.keys(one.options), ['A', 'B']);
+    assert.strictEqual(one.options.A, '故意杀人罪和破坏交通工具罪');
+    assert.strictEqual(one.options.B, '爆炸罪');
+    // 必须**从 A 开始且连续**,否则不许拆(防"C.xx D.yy"被误拆成别的东西)
+    assert.strictEqual(splitInlineOptions('乙说B.这样C.那样'), null);
+    // 整题:两行四选项
+    const qs = parseQuestionsText([
+        '1.甲的行为构成（）。',
+        'A.故意杀人罪和破坏交通工具罪B.爆炸罪',
+        'C.爆炸罪和破坏交通工具罪D.故意杀人罪',
+    ].join('\n'));
+    assert.strictEqual(qs.length, 1);
+    assert.deepStrictEqual(Object.keys(qs[0].options), ['A', 'B', 'C', 'D']);
+    assert.strictEqual(qs[0].options.D, '故意杀人罪');
+});
+

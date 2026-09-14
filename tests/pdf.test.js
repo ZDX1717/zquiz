@@ -5,7 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert';
 import zlib from 'node:zlib';   // 造压缩流/算长度(合成 PDF 用)
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { pdfToText, pdfTextGate, parseToUnicodeCMap, bytesToLatin1 } from '../src/pdf.js';
@@ -337,4 +337,162 @@ test('④ 中文每字绝对定位(最常见的考试卷排版):仍是一行,且
     const { text: out, gate } = await pdfToText(pdf);
     assert.strictEqual(out, text, '每字绝对定位也要拼回一行,实际:' + JSON.stringify(out));
     assert.strictEqual(gate.ok, true);
+});
+
+// ---------- 「内容乱套」回归(👤 2026-09-14 反馈) ----------
+// 三种成因:① 绘制顺序 ≠ 阅读顺序 ② 相邻两行被并成一行 ③ 页序 / 资源映射串页
+test('乱序落笔:按位置排序,不按绘制顺序', async () => {
+    // 生成器完全可能先画页脚、再回头补标题(或按对象乱序落笔)
+    const content = 'BT /F1 12 Tf 1 0 0 1 72 700 Tm (Second line) Tj 1 0 0 1 72 720 Tm (First line) Tj ET';
+    const { text } = await pdfToText(onePagePdf(content));
+    assert.strictEqual(text, 'First line\nSecond line', '横排要按 Y 自上而下排,实际:' + JSON.stringify(text));
+});
+
+test('紧排版(行距 1.2×字号)不许被并成一行', async () => {
+    const content = 'BT /F1 12 Tf 1 0 0 1 72 720 Tm (Line A) Tj 1 0 0 1 72 705.6 Tm (Line B) Tj 1 0 0 1 72 691.2 Tm (Line C) Tj ET';
+    const { text } = await pdfToText(onePagePdf(content));
+    assert.strictEqual(lineCount(text), 3, '相邻两行被并成一行就会"内容挤成一坨",实际:' + JSON.stringify(text));
+    assert.strictEqual(text, 'Line A\nLine B\nLine C', '顺序也不许反:' + JSON.stringify(text));
+});
+
+test('页序按页树 /Kids,不按对象在文件里的先后', async () => {
+    const quiz = '题目：甲题\n答案：A\n题目：乙题\n答案：B';
+    const cmap = cjkCMap(quiz);
+    const page = (num, lines) => [
+        { num, dict: `<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents ${num + 1} 0 R >>` },
+        { num: num + 1, dict: `<< /Length ${Buffer.byteLength(lines, 'latin1')} >>`, stream: 'BT /F1 12 Tf 60 700 Td ' + lines.split('\n').map((l, i, arr) => `<${cjkHex(l)}> Tj ${i < arr.length - 1 ? '0 -16 Td ' : ''}`).join('') + 'ET' },
+    ];
+    const pdf = buildPdf([
+        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
+        { num: 2, dict: '<< /Type /Pages /Kids [8 0 R 3 0 R] /Count 2 >>' },   // 页树:8 号页在前
+        ...page(8, '题目：甲题\n答案：A'),                                    // 但在文件里 8 号对象靠后
+        ...page(3, '题目：乙题\n答案：B'),
+        { num: 5, dict: '<< /Type /Font /Subtype /Type0 /BaseFont /SimSun /Encoding /Identity-H /DescendantFonts [6 0 R] /ToUnicode 7 0 R >>' },
+        { num: 6, dict: '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /SimSun >>' },
+        { num: 7, dict: `<< /Length ${Buffer.byteLength(cmap, 'latin1')} >>`, stream: cmap },
+    ]);
+    const { text, pages } = await pdfToText(pdf);
+    assert.strictEqual(pages, 2);
+    assert.ok(text.indexOf('甲题') < text.indexOf('乙题'), '页序要听页树的,实际:' + JSON.stringify(text));
+});
+
+test('同名资源 /F1 在不同页指向不同字体:各页各用各的映射(否则整页乱码)', async () => {
+    // 同一份文件里两页都用 /F1,但映射到不同字体 —— 用一张全局表的话,后读到的会覆盖前面的
+    const a = '甲甲甲甲甲甲甲甲', b = '乙乙乙乙乙乙乙乙';
+    const cmapA = cjkCMap(a), cmapB = cjkCMap(b);
+    malformed: {
+        // 两页的字符码位相同(<7532> = 甲,<4E59> = 乙),只是字体不同
+    }
+    const contentFor = (ch) => `BT /F1 12 Tf 60 700 Td <${cjkHex(ch.repeat(8))}> Tj ET`;
+    const pdf = buildPdf([
+        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
+        { num: 2, dict: '<< /Type /Pages /Kids [3 0 R 10 0 R] /Count 2 >>' },
+        { num: 3, dict: '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>' },
+        { num: 4, dict: `<< /Length ${Buffer.byteLength(contentFor('甲'), 'latin1')} >>`, stream: contentFor('甲') },
+        { num: 5, dict: '<< /Type /Font /Subtype /Type0 /BaseFont /FontA /Encoding /Identity-H /DescendantFonts [6 0 R] /ToUnicode 7 0 R >>' },
+        { num: 6, dict: '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /FontA >>' },
+        { num: 7, dict: `<< /Length ${Buffer.byteLength(cmapA, 'latin1')} >>`, stream: cmapA },
+        { num: 10, dict: '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 11 0 R >> >> /Contents 12 0 R >>' },
+        { num: 11, dict: '<< /Type /Font /Subtype /Type0 /BaseFont /FontB /Encoding /Identity-H /DescendantFonts [13 0 R] /ToUnicode 14 0 R >>' },
+        { num: 12, dict: `<< /Length ${Buffer.byteLength(contentFor('乙'), 'latin1')} >>`, stream: contentFor('乙') },
+        { num: 13, dict: '<< /Type /Font /Subtype /CIDFontType2 /BaseFont /FontB >>' },
+        { num: 14, dict: `<< /Length ${Buffer.byteLength(cmapB, 'latin1')} >>`, stream: cmapB },
+    ]);
+    const { text } = await pdfToText(pdf);
+    const lines = text.split('\n').filter(Boolean);
+    assert.strictEqual(lines.length, 2, '两页两行,实际:' + JSON.stringify(text));
+    assert.ok(lines[0].startsWith('甲'), '第一页该用 FontA 的映射,实际:' + JSON.stringify(lines[0]));
+    assert.ok(lines[1].startsWith('乙'), '第二页该用 FontB 的映射,实际:' + JSON.stringify(lines[1]));
+});
+
+// ---------- 👤 的真文件验出来的两个真因(2026-09-14) ----------
+test('每个字套一层 q/cm(位置藏在图形状态矩阵里):顺序必须正确', async () => {
+    // 这份卷子型 PDF 由转换工具生成:页首 `1 0 0 -1 0 841 cm` 把整页翻过来,
+    // 然后**每个字**都包一层 `q … cm(平移=该字在页面上的位置) … BT/Tm/Td/Tj … Q`。
+    // 不跟踪 cm 的话,整页的字都会塌到同一两个 Y 上 —— 表现就是"内容直接乱套"。
+    const pageH = 800;
+    const mk = (x, y, ch) => `q\n.05 0 0 .05 ${x} ${y} cm\nBT\n/F1 12 Tf\n1 0 0 -1 0 0 Tm\n0 0 Td <${ch}> Tj\nET\nQ\n`;
+    const content = `1 0 0 -1 0 ${pageH} cm\n` + mk(60, 60, '41') + mk(70, 60, '42') + mk(60, 80, '43') + mk(70, 80, '44');
+    const { text } = await pdfToText(onePagePdf(content));
+    // ⚠️ 页首 `1 0 0 -1 0 800 cm` 把整页翻过来 ⇒ y 越小越靠上,y=60 那行才是第一行
+    assert.strictEqual(text, 'AB\nCD', '应按页面位置排两行(不受绘制先后影响),实际:' + JSON.stringify(text));
+});
+
+test('兜底切流时不许吃掉数据尾部的 0x0A(它以 endstream 前的换行为名)', async () => {
+    // 真文件实测:`/Length 299` 的 ToUnicode 流,最后一个字节正好是 0x0A(zlib 校验和末字节)。
+    // 曾经在扫描阶段把"尾部换行"剪掉 → 流短一个字节 → inflate 报 unexpected end of file
+    // → 那份字体抽出来全是 Latin-1 乱码(👤 看到的"内容乱套"里就有这一层)。
+    const content = 'BT /F1 12 Tf 72 720 Td (Tail newline) Tj ET';
+    const z = zlib.deflateSync(Buffer.from(content, 'latin1'));
+    // 找一个"压缩结果最后字节是 0x0A"的内容,确保覆盖这个边界
+    let payload = content, packed = z;
+    for (let i = 0; i < 4000 && packed[packed.length - 1] !== 0x0a; i++) {
+        payload = content + ' ' + i;                      // 拼点东西,换出不同长度的压缩结果
+        packed = zlib.deflateSync(Buffer.from(payload, 'latin1'));
+    }
+    assert.strictEqual(packed[packed.length - 1], 0x0a, '造不出以 0x0A 结尾的压缩流(测试前提)');
+    const pdf = buildPdf([
+        { num: 1, dict: '<< /Type /Catalog /Pages 2 0 R >>' },
+        { num: 2, dict: '<< /Type /Pages /Kids [3 0 R] /Count 1 >>' },
+        { num: 3, dict: '<< /Type /Page /Parent 2 0 R /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>' },
+        { num: 4, dict: `<< /Length ${packed.length} /Filter /FlateDecode >>`, stream: packed },
+        { num: 5, dict: '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>' },
+    ]);
+    const { text } = await pdfToText(pdf);
+    assert.ok(text.includes('Tail newline'), '尾部是 0x0A 的压缩流也必须解开,实际:' + JSON.stringify(text));
+});
+
+test('真文件回归:👤 的《强化练习(二案例型选择题)》第 1 页顺序与首题完整', async (t) => {
+    // 真实文件比合成件更能压出问题(这份一次就压出"不看 cm"和"剪尾部字节"两个真因)。
+    // 文件在仓库外的语料目录里 —— 没有就跳过,不影响 CI 之外的环境。
+    const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const candidates = [
+        path.join(root, '..', '强化练习（二案例型选择题）.pdf'),
+        path.join(root, 'corpus', 'raw', '强化练习（二案例型选择题）.pdf'),
+    ];
+    const file = candidates.find(f => existsSync(f));
+    if (!file) { t.skip('语料文件不在本机'); return; }
+    const { text, gate } = await pdfToText(new Uint8Array(readFileSync(file)));
+    assert.strictEqual(gate.ok, true, '真文件应过闸:' + gate.detail);
+    const lines = text.split('\n');
+    assert.ok(lines[0].includes('强化练习'), '第一行应是标题,实际:' + JSON.stringify(lines[0]));
+    assert.ok(/^1\./.test(lines[1]), '第二行应是第 1 题,实际:' + JSON.stringify(lines[1]));
+    // 题号必须递增(顺序乱套最直接的判据)
+    const nums = lines.map(l => (l.match(/^(\d{1,3})\./) || [])[1]).filter(Boolean).map(Number);
+    const sorted = [...nums].sort((a, b) => a - b);
+    assert.deepStrictEqual(nums, sorted, '题号必须递增,实际:' + nums.join(','));
+    assert.ok(nums.length >= 20, '这份文件里应有几十道题,实际识别到 ' + nums.length + ' 个题号');
+    // 不该再出现 Latin-1 乱码(剪字节那个 bug 的症状)
+    assert.ok(!/[\u00C0-\u024F]{1}/.test(text), '不该有拉丁怪字,实际:' + JSON.stringify((text.match(/[\u00C0-\u024F]/g) || []).join('')));
+});
+
+test('有真实 /Widths 时:两栏之间的空隙要补空格(选项才不会粘在一起)', async () => {
+    // 两栏卷子:A 列文字与 B 列之间有半个字以上的空隙 → 补空格 → 解析器才切得出 4 个选项。
+    // ⚠️ 判据是"上一段排完的笔位置"(advEnd),靠 /Widths 算出来 —— 没有宽度就一律不补,
+    //    否则会把英文词切开(见上一条)。
+    const widthArr = Array.from({ length: 100 }, () => 500).join(' ');
+    const content = 'BT /F1 10 Tf 60 700 Td (AAAA) Tj 40 0 Td (BBBB) Tj ET';
+    const pdf = onePagePdf(content, {
+        fontDict: `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 0 /LastChar 99 /Widths [${widthArr}] >>`,
+    });
+    const { text } = await pdfToText(pdf);
+    assert.strictEqual(text, 'AAAA BBBB', '半字空隙应补一个空格,实际:' + JSON.stringify(text));
+    // 反例:紧挨着(无空隙)不许补
+    const tight = onePagePdf('BT /F1 10 Tf 60 700 Td (AAAA) Tj 20 0 Td (BBBB) Tj ET', {
+        fontDict: `<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /FirstChar 0 /LastChar 99 /Widths [${widthArr}] >>`,
+    });
+    assert.strictEqual((await pdfToText(tight)).text, 'AAAABBBB', '紧挨着不许补空格');
+});
+
+test('真文件端到端:66 题每题 4 个选项(两栏选项靠 CJK 分隔符切开)', async (t) => {
+    const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const file = [path.join(root, '..', '强化练习（二案例型选择题）.pdf')].find(f => existsSync(f));
+    if (!file) { t.skip('语料文件不在本机'); return; }
+    const { text } = await pdfToText(new Uint8Array(readFileSync(file)));
+    const { parseQuestionsText } = await import('../src/parser.js');
+    const qs = parseQuestionsText(text);
+    assert.ok(qs.length >= 60, '应解析出几十道题,实际 ' + qs.length);
+    const bad = qs.filter(q => Object.keys(q.options).length !== 4);
+    assert.strictEqual(bad.length, 0, '每题都应是 4 个选项,实际异常:' +
+        bad.slice(0, 3).map(q => q.content.slice(0, 14) + '→' + Object.keys(q.options).join('')).join(' | '));
 });

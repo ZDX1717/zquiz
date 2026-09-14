@@ -242,8 +242,11 @@ export function scanObjects(latin1) {
                 const e = latin1.indexOf('endstream', streamStart);
                 streamEnd = e === -1 ? bodyEnd : e;
             }
-            // 去掉流数据尾部的换行(它不属于数据)
-            while (streamEnd > streamStart && (latin1[streamEnd - 1] === '\n' || latin1[streamEnd - 1] === '\r')) streamEnd--;
+            // 🚨 这里**绝对不能**剪掉"尾部换行":流数据的最后一个字节本身可能就是 0x0A
+            //    (zlib 校验和末字节经常正好是 0x0A)。曾经在这里剪过 —— 实测把一份正常 PDF 的
+            //    ToUnicode 表剪短一个字节,inflate 报 "unexpected end of file",于是那几个字
+            //    全变成 Latin-1 乱码(👤 看到的"内容乱套"里就有这一层的贡献)。
+            //    真要处理"endstream 前的换行",交给 decodeStream 的多种切法去试。
         }
         // ⚠️ 除 dict 外还要留 value:PDF 里 `12 0 obj 133 endobj` 这种"裸数字对象"到处都是
         //    (`/Length 3 0 R` 就指向它),只留 dict 的话间接长度永远解析不出来
@@ -301,6 +304,13 @@ export async function decodeStream(latin1, streamStart, streamEnd, dict) {
     const variants = [raw];
     const trimmed = raw.replace(/[\r\n]+$/, '');
     if (trimmed !== raw) variants.push(trimmed);
+    // 再补一种:按字典里的 /Length 原样切(用来兜住"扫描兜底把流切短/切长"的情况)
+    if (dict) {
+        const declared = numberOf(dict.Length);
+        if (declared !== null && declared > 0 && declared !== raw.length && streamStart + declared <= latin1.length) {
+            variants.push(latin1.slice(streamStart, streamStart + declared));
+        }
+    }
     for (const candidate of variants) {
         try {
             let data = latin1ToBytes(candidate);
@@ -442,21 +452,81 @@ export function parseToUnicodeCMap(text) {
 }
 
 // ---------- 字体表:资源名 -> { isCid, cmap } ----------
-async function buildFontTable(latin1, objects) {
-    const byNum = new Map();                               // objNum -> {isCid, cmap}
-    const byName = new Map();                              // 资源名 -> {isCid, cmap}
-    const resolve = (v) => {
-        const n = refNumOf(v);
-        if (n !== null) return objects.get(n) || null;
-        return null;
-    };
+// 字形宽度:用来算"这段字排完占多宽"。
+// 🚨 为什么必须要宽度:两栏排版的卷子(选项 A|B 并排、C|D 并排)在 PDF 里就是同一行的
+//    两段文字,不知道前一段占多宽就**判断不出中间那道空隙**,于是 "A.xxx B.yyy" 会粘成
+//    "A.xxxB.yyy" —— 解析器只能认出两个选项(👤 的真文件就是这样)。有 /Widths / /W 就用真实值,
+//    没有才退回按字符估算。
+function widthsOf(d, objects) {
+    const widths = new Map();                 // code -> em(1 = 一个字宽)
+    let defaultEm = null;
+    const arr = arrayOf(d.Widths);
+    const first = numberOf(d.FirstChar);
+    if (arr && first !== null) {
+        arr.forEach((w, i) => {
+            const v = numberOf(w);
+            if (v !== null) widths.set(first + i, v / 1000);
+        });
+    }
+    const desc = dictOfResolved(d.FontDescriptor, objects);
+    const missing = desc ? numberOf(desc.MissingWidth) : null;
+    if (missing !== null) defaultEm = missing / 1000;
+    // Type3:宽度在字形空间,要乘 /FontMatrix 的 x 缩放(常见 .001)
+    if (nameOf(d.Subtype) === 'Type3') {
+        const fm = arrayOf(d.FontMatrix);
+        const sx = (fm && numberOf(fm[0])) || 0.001;
+        for (const [k, v] of widths) widths.set(k, v * (sx / 0.001));
+    }
+    // CID(Type0):宽度在后代字体的 /W 里;/DW 是默认(通常 1000)
+    if (nameOf(d.Subtype) === 'Type0') {
+        const descFonts = arrayOf(d.DescendantFonts) || [];
+        const desc0 = dictOfResolved(descFonts[0], objects);
+        const dw = desc0 ? numberOf(desc0.DW) : null;
+        if (dw !== null) defaultEm = dw / 1000;
+        const wArr = arrayOf(desc0 && desc0.W);
+        if (wArr) {
+            for (let i = 0; i < wArr.length;) {
+                const c1 = numberOf(wArr[i]);
+                if (c1 === null) { i++; continue; }
+                const next = wArr[i + 1];
+                const list = arrayOf(next);
+                if (list) {
+                    list.forEach((w, k) => { const v = numberOf(w); if (v !== null) widths.set(c1 + k, v / 1000); });
+                    i += 2;
+                } else {
+                    const c2 = numberOf(next);
+                    const w = numberOf(wArr[i + 2]);
+                    if (c2 !== null && w !== null) {
+                        for (let c = c1; c <= c2 && c - c1 < 65536; c++) widths.set(c, w / 1000);
+                        i += 3;
+                    } else i++;
+                }
+            }
+        }
+    }
+    return { widths, defaultEm };
+}
+
+// 粗略估算(没有 /Widths 时):CJK/全角 1 em,其余 0.5 em
+function estimateEm(ch) {
+    const c = ch.codePointAt(0);
+    if (c >= 0x1100 && (c <= 0x115F || (c >= 0x2E80 && c <= 0xA4CF) || (c >= 0xAC00 && c <= 0xD7A3)
+        || (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFE30 && c <= 0xFE6F) || (c >= 0xFF00 && c <= 0xFF60)
+        || (c >= 0xFFE0 && c <= 0xFFE6))) return 1;
+    return 0.5;
+}
+
+// 字体条目按**对象号**解析一次(ToUnicode 解析有成本,别每页重来)
+export async function buildFontEntries(latin1, objects) {
+    const byNum = new Map();
     for (const obj of objects.values()) {
         const d = obj.dict;
         if (!d || nameOf(d.Type) !== 'Font') continue;
         const subtype = nameOf(d.Subtype);
         const isCid = subtype === 'Type0';
         let cmap = null;
-        const toUni = resolve(d.ToUnicode);
+        const toUniRef = refNumOf(d.ToUnicode);
+        const toUni = toUniRef !== null ? objects.get(toUniRef) : null;
         if (toUni) {
             const data = await decodeStream(latin1, toUni.streamStart, toUni.streamEnd, toUni.dict).catch(() => null);
             if (data) cmap = parseToUnicodeCMap(bytesToLatin1(data));
@@ -465,29 +535,82 @@ async function buildFontTable(latin1, objects) {
         // 这类字体里每个字都是一次 `Td 0 -字号`,只按 Y 变化断行会得到"一个字一行"。
         const encName = nameOf(d.Encoding);
         const vertical = !!encName && /-V$/.test(encName);
-        const entry = { isCid, cmap, hasToUnicode: !!cmap, subtype, vertical };
-        byNum.set(obj.num, entry);
-        const base = nameOf(d.BaseFont);
-        if (base) byName.set(base, entry);
+        byNum.set(obj.num, { isCid, cmap, hasToUnicode: !!cmap, subtype, vertical, ...widthsOf(d, objects) });
     }
-    // 资源名 -> 字体:遍历所有 /Font << /F1 12 0 R >> 字典
-    const linkResources = (resDict) => {
-        // ⚠️ 真实文件里 /Font 常是**间接引用**(`/Font 10 0 R` → `<< /F1 9 0 R >>`),
-        //    只认内联字典的话字体表永远是空的 → 中文全成乱码/读不出
-        const fonts = dictOfResolved(resDict && resDict.Font, objects);
-        if (!fonts) return;
-        for (const key of Object.keys(fonts)) {
-            const ref = resolve(fonts[key]);
-            if (ref && byNum.has(ref.num)) byName.set(key, byNum.get(ref.num));
-        }
+    return byNum;
+}
+
+// 把某一页的 /Resources 里 `/Font << /F1 12 0 R >>` 链接成"资源名 → 字体条目"。
+// 🚨 必须**按页**建:同一份文件里不同页可以把 `/F1` 指到不同字体,用一张全局表的话
+//    后读到的那份会覆盖前面 —— 表现就是"某些页的文字整段乱码"(👤 报的"内容乱套")。
+export function linkPageFonts(resDict, objects, entries, out = new Map()) {
+    // ⚠️ 真实文件里 /Font 常是间接引用(`/Font 10 0 R` → `<< /F1 9 0 R >>`)
+    const fonts = dictOfResolved(resDict && resDict.Font, objects);
+    if (!fonts) return out;
+    for (const key of Object.keys(fonts)) {
+        const n = refNumOf(fonts[key]);
+        if (n !== null && entries.has(n)) out.set(key, entries.get(n));
+    }
+    return out;
+}
+
+// 页面的 /Resources 可以**继承**自祖先后代(页自己没有就往上找 /Parent)
+export function inheritedResources(pageObj, objects) {
+    let cur = pageObj;
+    for (let depth = 0; cur && depth < 32; depth++) {
+        const res = dictOfResolved(cur.dict.Resources, objects);
+        if (res) return res;
+        const parentNum = refNumOf(cur.dict.Parent);
+        cur = parentNum !== null ? objects.get(parentNum) : null;
+    }
+    return null;
+}
+
+// 页面顺序:按页树 /Kids 走,而不是"对象在文件里的顺序"
+// 🚨 文件里对象的物理顺序与阅读顺序**无关**,直接按对象号遍历会把页序打乱(👤 报的"内容乱套")。
+export function pageOrder(objects) {
+    const order = [];
+    const seen = new Set();
+    const walk = (num, depth) => {
+        if (num === null || num === undefined || seen.has(num) || depth > 32) return;
+        seen.add(num);
+        const o = objects.get(num);
+        if (!o || !o.dict) return;
+        if (nameOf(o.dict.Type) === 'Page') { order.push(num); return; }
+        for (const kid of arrayOf(o.dict.Kids) || []) walk(refNumOf(kid), depth + 1);
     };
-    for (const obj of objects.values()) {
-        const d = obj.dict;
-        if (!d) continue;
-        const res = dictOfResolved(d.Resources, objects);   // /Resources 也可能是个引用
-        if (res) linkResources(res);
-    }
-    return { byNum, byName };
+    const catalog = [...objects.values()].find(o => nameOf(o.dict.Type) === 'Catalog');
+    if (catalog) walk(refNumOf(catalog.dict.Pages), 0);
+    // 兜底:页树里没走到的 Page(结构损坏)按对象号追加 —— 宁可顺序差,不能丢页
+    const rest = [...objects.values()]
+        .filter(o => nameOf(o.dict.Type) === 'Page' && !seen.has(o.num))
+        .map(o => o.num)
+        .sort((a, b) => a - b);
+    return order.concat(rest);
+}
+
+// ---------- 图形状态(CTM) ----------
+// 🚨 这一节是"内容乱套"的真解:很多转换工具会给**每个字**套一层
+//    `q … cm(平移=这个字在页面上的位置) … BT/Tm/Td/Tj … Q`,
+//    真正的位置在 cm 里,文本矩阵里的 Td 反而只是字内部的小偏移。
+//    不跟踪 cm 的话,整页的字都会塌到同一两个"Y 值"上 —— 表现就是"内容直接乱套"。
+const IDENTITY_MAT = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+
+function mulMat(m, n) {                       // m 之后接 n:m × n
+    return {
+        a: m.a * n.a + m.b * n.c,
+        b: m.a * n.b + m.b * n.d,
+        c: m.c * n.a + m.d * n.c,
+        d: m.c * n.b + m.d * n.d,
+        e: m.e * n.a + m.f * n.c + n.e,
+        f: m.e * n.b + m.f * n.d + n.f,
+    };
+}
+function applyMat(m, x, y) {                  // 点:含平移
+    return { x: m.a * x + m.c * y + m.e, y: m.b * x + m.d * y + m.f };
+}
+function applyVec(m, x, y) {                  // 向量:不含平移
+    return { x: m.a * x + m.c * y, y: m.b * x + m.d * y };
 }
 
 // ---------- 内容流:抽文本 ----------
@@ -499,19 +622,77 @@ async function buildFontTable(latin1, objects) {
 //   再按"垂直于前进方向的坐标 = 哪一行"分组。这样上面三种排版都能归成正确的行。
 //   ⚠️ 空格**只认**文本里的空格字符与 TJ 位移:没有 /Widths 就算不出片段之间的真实间隙,
 //      按起点距离补空格会把英文词切开(实测 "Dummy" → "Dumm y")。
-export function extractTextFromContent(content, fontTable = { byName: new Map() }) {
+export function collectRuns(content, fontTable = { byName: new Map() }) {
     const runs = [];
+    let ctm = IDENTITY_MAT;                              // 当前图形状态矩阵
+    const ctmStack = [];
     let tm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };   // 文本矩阵
     let tlm = { e: 0, f: 0 };                            // 行矩阵(Td/TD/T* 相对它移动)
     let leading = 0;                                     // TL
     let size = 12;                                       // 未声明 Tf 时的保守默认
     let font = null;
     let forced = false;                                  // 下一个片段是否强制另起一行(T* / ' / ")
+    let pendingTjGap = false;                            // TJ 里刚出现一个大位移
 
-    const pushRun = (text) => {
+    // 交互过的一行文字宽度(em):有 /Widths 用真实值,没有才按字符估算
+    const emWidthOf = (raw) => {
+        const f = font;
+        let em = 0;
+        if (f && f.widths) {
+            if (f.isCid) {
+                for (let i = 0; i + 1 < raw.length; i += 2) {
+                    const code = (raw.charCodeAt(i) << 8) | raw.charCodeAt(i + 1);
+                    em += f.widths.has(code) ? f.widths.get(code) : (f.defaultEm !== null ? f.defaultEm : 0.5);
+                }
+                if (raw.length % 2) em += 0.5;
+            } else {
+                for (let i = 0; i < raw.length; i++) {
+                    const code = raw.charCodeAt(i);
+                    em += f.widths.has(code) ? f.widths.get(code) : (f.defaultEm !== null ? f.defaultEm : estimateEm(String.fromCharCode(code)));
+                }
+            }
+            return em;
+        }
+        for (const ch of raw) em += estimateEm(ch);
+        return em;
+    };
+    const pushRun = (text, advanceEm = null) => {
         if (!text) return;
-        runs.push({ text, a: tm.a, b: tm.b, e: tm.e, f: tm.f, size, forced, vertical: !!(font && font.vertical) });
+        // 设备坐标 = CTM × 文本矩阵;前进方向与"换行方向"都取设备空间的向量
+        const scale = Math.hypot(tm.a, tm.b) || 1;       // 文本矩阵自身的缩放(通常 1)
+        const origin = applyMat(ctm, tm.e, tm.f);
+        const adv = applyVec(ctm, tm.a / scale, tm.b / scale);
+        const down = applyVec(ctm, tm.c / scale, tm.d / scale);
+        const advLen = Math.hypot(adv.x, adv.y) || 1;
+        const advX = adv.x / advLen;
+        const advY = adv.y / advLen;
+        let sx = -down.x, sy = -down.y;
+        const sl = Math.hypot(sx, sy);
+        if (sl < 1e-6) { sx = 0; sy = -1; } else { sx /= sl; sy /= sl; }
+        const effSize = size * scale * advLen;           // 折算成设备尺寸
+        const em = advanceEm === null ? emWidthOf(text) : advanceEm;
+        const measured = !!(font && font.widths && (font.widths.size || font.defaultEm !== null));
+        const along = origin.x * advX + origin.y * advY;
+        const stack = origin.x * sx + origin.y * sy;
+        runs.push({
+            text,
+            x: origin.x, y: origin.y,
+            advX, advY,
+            stackCoord: stack,                           // 沿"换行方向":横排=第几行,竖排=列内次序
+            alongCoord: along,                           // 沿"前进方向":横排=行内次序,竖排=第几列
+            advEnd: along + em * effSize,                // 这段字排完,笔走到哪
+            measured,                                    // 宽度是真实 /Widths 还是估算
+            tjGap: pendingTjGap,                         // 紧跟在 TJ 大位移后面(那是明确的空隙)
+            size: effSize,
+            forced,
+            vertical: !!(font && font.vertical),
+        });
         forced = false;
+        pendingTjGap = false;
+        // 笔前进(文本空间):Tj 之后的位置 = 之前 + 宽度 × 字号
+        const walk = em * size;
+        tm.e += walk * tm.a;
+        tm.f += walk * tm.b;
     };
     const tlNextLine = () => { tlm.f -= leading; tm.e = tlm.e; tm.f = tlm.f; };
 
@@ -551,6 +732,17 @@ export function extractTextFromContent(content, fontTable = { byName: new Map() 
             return v && typeof v.num === 'number' ? v.num : null;
         };
         switch (t.value) {
+            case 'q':
+                ctmStack.push(ctm);
+                break;
+            case 'Q':
+                ctm = ctmStack.length ? ctmStack.pop() : IDENTITY_MAT;
+                break;
+            case 'cm': {
+                const f = numAt(0), e = numAt(1), d = numAt(2), c = numAt(3), b = numAt(4), a = numAt(5);
+                if ([a, b, c, d, e, f].every(v => typeof v === 'number')) ctm = mulMat({ a, b, c, d, e, f }, ctm);
+                break;
+            }
             case 'BT':
                 tm = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
                 tlm = { e: 0, f: 0 };
@@ -590,24 +782,31 @@ export function extractTextFromContent(content, fontTable = { byName: new Map() 
                 break;
             }
             case 'Tj':
-                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str));
+                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str), emWidthOf(last().str));
                 break;
             case "'":
                 forced = true;
                 tlNextLine();
-                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str));
+                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str), emWidthOf(last().str));
                 break;
             case '"':
                 forced = true;
                 tlNextLine();
-                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str));
+                if (last() && typeof last().str === 'string') pushRun(decodeString(last().str), emWidthOf(last().str));
                 break;
             case 'TJ': {
                 const arr = (last() && last().items) || [];
                 for (const item of arr) {
-                    if (typeof item.str === 'string') pushRun(decodeString(item.str));
-                    // TJ 位移单位是 1/1000 em:词间距 250~330、字距 ≤150 → 阈值 200
-                    else if (typeof item.num === 'number' && item.num < -200) pushRun(' ');
+                    if (typeof item.str === 'string') pushRun(decodeString(item.str), emWidthOf(item.str));
+                    // TJ 的数字是 1/1000 em 的位移:推进笔,由"空隙判据"决定要不要补空格
+                    // (阈值 -200 那种做法太糙:它既不知道前一段有多宽,也不知道后面从哪开始)
+                    else if (typeof item.num === 'number') {
+                        const walk = -(item.num / 1000) * size;
+                        tm.e += walk * tm.a;
+                        tm.f += walk * tm.b;
+                        // 250 以上才算"词间距"(字距一般 ≤150);给它一个标记,后面按 true 补空格
+                        if (item.num < -200) pendingTjGap = true;
+                    }
                 }
                 break;
             }
@@ -616,7 +815,11 @@ export function extractTextFromContent(content, fontTable = { byName: new Map() 
         }
         operands.length = 0;
     }
-    return runsToText(runs);
+    return runs;
+}
+
+export function extractTextFromContent(content, fontTable = { byName: new Map() }) {
+    return runsToText(collectRuns(content, fontTable));
 }
 
 // 片段 → 文本:按"垂直于前进方向的坐标"分行,行内按前进方向排序
@@ -624,27 +827,44 @@ function runsToText(runs) {
     const lines = [];
     let cur = null;
     for (const r of runs) {
-        const len = Math.hypot(r.a, r.b) || 1;
-        const dx = r.a / len;
-        const dy = r.b / len;
-        // 横排:一行 = 同一个 Y,行内按 X 排;
-        // 竖排字体(Identity-V):一行(一列)= 同一个 X,列内自上而下按 Y 排。
-        const lineCoord = r.vertical ? r.e : (r.e * -dy + r.f * dx);
-        const orderCoord = r.vertical ? -r.f : (r.e * dx + r.f * dy);
-        const tol = Math.max(2, Math.abs(r.size) * 0.5);    // 半个字高以内都算同一行(容抖动)
-        const turned = cur && (Math.abs(dx - cur.dx) > 0.2 || Math.abs(dy - cur.dy) > 0.2);
-        if (!cur || r.forced || turned || cur.vertical !== r.vertical || Math.abs(lineCoord - cur.lineCoord) > tol) {
-            cur = { lineCoord, dx, dy, vertical: r.vertical, parts: [] };
+        // 分组轴:横排看"第几行"(stackCoord),竖排看"第几列"(alongCoord)
+        const key = r.vertical ? r.alongCoord : r.stackCoord;
+        const tol = Math.max(0.5, Math.abs(r.size) * 0.35);
+        const turned = cur && (Math.abs(r.advX - cur.advX) > 0.2 || Math.abs(r.advY - cur.advY) > 0.2);
+        if (!cur || r.forced || turned || cur.vertical !== r.vertical
+            || Math.abs(key - (cur.vertical ? cur.alongCoord : cur.stackCoord)) > tol) {
+            cur = { alongCoord: r.alongCoord, stackCoord: r.stackCoord, advX: r.advX, advY: r.advY, vertical: r.vertical, parts: [] };
             lines.push(cur);
         }
-        cur.parts.push({ orderCoord, text: r.text });
+        cur.parts.push(r);
     }
-    return lines
-        .map(l => l.parts.sort((x, y) => x.orderCoord - y.orderCoord).map(p => p.text).join(''))
-        .join('\n')
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+    // 行内次序:横排按前进方向,竖排按自上而下
+    for (const l of lines) {
+        l.parts.sort((a, b) => (l.vertical ? a.stackCoord - b.stackCoord : a.alongCoord - b.alongCoord));
+    }
+    // 行与行:按分组轴升序(横排 = 自上而下;竖排 = 从左到右)
+    lines.sort((a, b) => (a.vertical ? a.alongCoord - b.alongCoord : a.stackCoord - b.stackCoord));
+
+    // 行内空隙补空格(两栏选项 / 表格单元格靠它分开)。
+    // ⚠️ 只在**真实宽度**之间补(没 /Widths 时估出来的宽度会把英文词切开),或者空隙本身就来自 TJ 位移。
+    const SEP_EM = 0.2;
+    const out = [];
+    for (const l of lines) {
+        let line = '';
+        let prev = null;
+        for (const r of l.parts) {
+            if (!l.vertical && prev) {
+                const gap = r.alongCoord - prev.advEnd;
+                const known = (prev.measured && r.measured) || r.tjGap;
+                if (known && gap > SEP_EM * Math.max(prev.size, r.size)
+                    && !/\s$/.test(line) && !/^\s/.test(r.text)) line += ' ';
+            }
+            line += r.text;
+            prev = r;
+        }
+        out.push(line);
+    }
+    return out.join('\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 // 内容流词法:只切出我们关心的东西(字符串 / 数字 / 名字 / 数组 / 算子)
@@ -738,24 +958,29 @@ function pageContentsRefs(pageDict, objects) {
     return list.map(x => refNumOf(x)).filter(n => n !== null && objects.has(n));
 }
 
-async function collectContentText(latin1, objects, fontTable) {
-    const pages = [...objects.values()].filter(o => nameOf(o.dict.Type) === 'Page');
+async function collectContentText(latin1, objects, fontEntries, globalFonts) {
     const texts = [];
-    for (const page of pages) {
-        const refs = pageContentsRefs(page.dict, objects);
+    const pageNums = pageOrder(objects);
+    for (const pageNum of pageNums) {
+        const page = objects.get(pageNum);
+        if (!page) continue;
+        // 这一页自己的资源 → 自己的字体表;拿不到就退回"全局按名链接"的兜底表
+        const pageFonts = linkPageFonts(inheritedResources(page, objects), objects, fontEntries);
+        const table = { byName: pageFonts.size ? pageFonts : globalFonts };
         const chunks = [];
-        for (const n of refs) {
+        for (const n of pageContentsRefs(page.dict, objects)) {
             const obj = objects.get(n);
             if (!obj) continue;
             const data = await decodeStream(latin1, obj.streamStart, obj.streamEnd, obj.dict).catch(() => null);
             if (data) chunks.push(bytesToLatin1(data));
         }
         if (chunks.length) {
-            const t = extractTextFromContent(chunks.join('\n'), fontTable);
+            const t = extractTextFromContent(chunks.join('\n'), table);
             if (t) texts.push(t);
         }
     }
-    if (texts.length) return { text: texts.join('\n'), pages: pages.length };
+    if (texts.length) return { text: texts.join('\n'), pages: pageNums.length };
+
     // 没有页面对象(或内容挂在别处):退化成"扫所有像内容流的流"
     const fallback = [];
     for (const obj of objects.values()) {
@@ -764,10 +989,10 @@ async function collectContentText(latin1, objects, fontTable) {
         if (!data) continue;
         const text = bytesToLatin1(data);
         if (!/\bBT\b/.test(text) || !/\b(Tj|TJ)\b/.test(text)) continue;
-        const t = extractTextFromContent(text, fontTable);
+        const t = extractTextFromContent(text, { byName: globalFonts });
         if (t) fallback.push(t);
     }
-    return { text: fallback.join('\n'), pages: pages.length };
+    return { text: fallback.join('\n'), pages: pageNums.length };
 }
 
 // ---------- 质量闸门 ----------
@@ -817,11 +1042,18 @@ export async function pdfToText(arrayBuffer) {
     if (!objects.size) throw new Error('PDF 结构异常,没找到任何内容对象');
     refineStreamBounds(latin1, objects);            // 间接 /Length 要等对象齐了才算得出
     await expandObjectStreams(latin1, objects);
-    const fontTable = await buildFontTable(latin1, objects);
-    const { text, pages } = await collectContentText(latin1, objects, fontTable);
+    const fontEntries = await buildFontEntries(latin1, objects);
+    // 全局兜底表:只给"页面结构损坏、拿不到 Resources"的情况用
+    const globalFonts = new Map();
+    for (const obj of objects.values()) {
+        const base = obj.dict && nameOf(obj.dict.BaseFont);
+        if (base && fontEntries.has(obj.num)) globalFonts.set(base, fontEntries.get(obj.num));
+    }
+    for (const obj of objects.values()) linkPageFonts(obj.dict && obj.dict.Resources, objects, fontEntries, globalFonts);
+    const { text, pages } = await collectContentText(latin1, objects, fontEntries, globalFonts);
 
     let cidFontsWithoutMap = 0;
-    for (const f of fontTable.byNum.values()) {
+    for (const f of fontEntries.values()) {
         if (f.isCid && !f.hasToUnicode) cidFontsWithoutMap++;
     }
     const cjkCount = (text.match(/[\u3400-\u9FFF\uF900-\uFAFF]/g) || []).length;
