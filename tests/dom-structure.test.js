@@ -283,22 +283,28 @@ test('首页「?」= 「导入题库」右边的格式说明悬浮面板(👤 20
     assert.ok(aiIdx > html.indexOf('<header') && aiIdx < html.indexOf('</header>'),
         '⚙ AI 设置应在标题栏(header)里,不该留在 <main> 的卡片里');
     assert.ok(aiIdx > html.indexOf('</nav>'), '⚙ AI 设置应在导航之后、主题开关之前');
-    // ② 「清空」角标与「?」不是一回事:「?」在卡头(标题右边),「清空」在输入框**外面**的上方右侧
-    //    👤 2026-09-14:要在框外面,不在框里面(放框里会占掉框内一行高度)
-    const fieldHead = home.slice(home.indexOf('class="paste-field-head"'), home.indexOf('class="paste-box"'));
-    assert.ok(fieldHead.includes('id="paste-clear-btn"'), '「清空」应在 .paste-field-head 里(框外上方)');
-    assert.ok(home.indexOf('class="paste-field-head"') < home.indexOf('id="paste-input"'),
-        '角标行要排在输入框**之前**(即上方)');
-    assert.ok(!/class="paste-box-head"/.test(home), '旧的框内头行(.paste-box-head)应已删除');
-    assert.ok(/\.paste-field-head\s*\{[^}]*justify-content\s*:\s*flex-end/.test(cssNoComments),
-        '角标行要右对齐(贴输入框右上角)');
+    // ② 「清空」与「?」同一行:卡头里排在「?」之后,且靠 margin-left:auto 贴行尾(👤 2026-09-14)
+    const clearIdx2 = home.indexOf('id="paste-clear-btn"');
+    // ⚠️ 别用"卡头之后第一个 </div>"当边界:「?」的面板里就有 div,那个 </div> 排在按钮**前面**(踩过)
+    const detailsClose = home.indexOf('</details>', helpIdx);
+    assert.ok(clearIdx2 > detailsClose && clearIdx2 < home.indexOf('class="paste-box"'),
+        '「清空」应是卡头行的最后一个孩子(排在「?」那块之后、输入框之前 = 同一行的右边)');
+    assert.ok(clearIdx2 < home.indexOf('id="paste-input"'), '「清空」在卡头,不在输入框那一块');
+    assert.ok(!/class="paste-field-head"/.test(home) && !/class="paste-box-head"/.test(home),
+        '框内/框外那两行角标行都该删掉了(清空已上卡头)');
+    assert.ok(/\.paste-clear\s*\{[^}]*margin-left\s*:\s*auto/.test(cssNoComments),
+        '「清空」靠 margin-left:auto 贴行尾 —— 卡头是 flex-start,不能用 space-between');
+    // 与「?」圆键看齐:同高 24px、同描边色(重新设计过大小样式)
+    assert.ok(/\.paste-clear\s*\{[^}]*height\s*:\s*24px/.test(cssNoComments), '「清空」应与「?」同高 24px');
+    assert.ok(/\.paste-clear\s*\{[^}]*border\s*:\s*1px solid var\(--c-border\)/.test(cssNoComments),
+        '「清空」用与「?」同一档描边色');
     assert.ok(home.indexOf('class="paste-box"') < home.indexOf('id="paste-input"'),
         '输入框应包在 .paste-box 里(边框与聚焦环由盒子承担)');
     assert.ok(/\.paste-box:focus-within\s*\{[^}]*border-color/.test(cssNoComments),
         '聚焦环必须跟着盒子走 —— textarea 现在无边框,环不给盒子就"点进去没反应"');
     assert.ok(/\.paste-clear\s*\{[^}]*border-radius\s*:\s*999px/.test(cssNoComments),
         '「清空」应是小号药丸(形状与大小按 👤 要求重新设计)');
-    assert.ok(/\.paste-clear\s*\{[^}]*border\s*:\s*none/.test(cssNoComments),
+    assert.ok(/\.paste-clear\s*\{[^}]*border\s*:\s*(none|1px solid)/.test(cssNoComments),
         '按钮类必须显式声明 border(否则露浏览器默认黑边)');
     // ③ 内容搬过来了(格式说明的正文不许丢)
     const panel = home.slice(home.indexOf('class="home-help-panel"'), home.indexOf('</details>'));

@@ -1167,20 +1167,9 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 }
 
 
-/* 输入框 + 它**上方**右上角的「清空」(👤 2026-09-14:角标要在框**外面**,不在框里面)。
-   ⚠️ 角标独占一行、放框外:放进框里要占掉框内一行高度;浮在文字上又会被长行钻到底下;
-      给 textarea 加 padding-right 则是整块宽度白让(手机上白让 40px 太贵)。
-   ⚠️ 边框/圆角/聚焦环挂在 `.paste-box` 上(它里面就只有 textarea):
-      这样角标贴着框、又不与框线纠缠成一个"双层边"。
-   ⚠️ 角标行**不给固定高度**:它只有 20px 高,给高度反而把卡片顶高(手机上一屏要看完)。 */
-.paste-field { position: relative; }
-.paste-field-head {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;   /* 角标贴输入框右上角 */
-    margin-bottom: 2px;
-    min-height: 20px;
-}
+/* 输入框 = 一个盒子(边框/圆角/聚焦环都挂在 `.paste-box` 上,里面就是 textarea 自己)。
+   ⚠️ 边框挂在盒子上而不是 textarea 上:聚焦时换的是盒子的边色,
+      语义上"整个输入区被激活",也免得角标那种框外元素与 textarea 的边线纠缠。 */
 .paste-box {
     border: 1px solid var(--c-border);
     border-radius: 6px;
@@ -1188,23 +1177,34 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     padding: 6px;
 }
 .paste-box:focus-within { border-color: var(--c-primary); }   /* 聚焦环跟着盒子走 */
-/* 「清空」角标:小号药丸、无边框(None 必须显式写,否则露浏览器默认黑边)、描边留给 hover。
-   它是**三级**动作(擦掉内容),视觉重量要低于「选择文件」那个描边按钮,更低于主键。 */
+/* 「清空」= 卡头那一行**行尾**的小药丸(👤 2026-09-14)。
+   外形向同行的「?」圆键看齐:同高 24px、同描边色、同圆角气质(一个带词、一个只带符号),
+   于是这一行读起来是"标题 · 说明 · 动作"三件,而不是"标题旁边趴着一块无关的按钮"。
+   ⚠️ `margin-left: auto` 才是"贴行尾":卡头是 flex-start(标题与「?」必须挨着),
+      不能改用 space-between —— 那会把标题顶到最左、「?」甩到最右。
+   ⚠️ `border` 必须显式声明(不许留空),否则露浏览器默认黑边。
+   ⚠️ 它是**擦除**类动作,所以 hover 才露红;静态态保持安静的灰描边。 */
 .paste-clear {
-    border: none;
-    background: none;
-    padding: 3px 9px;
+    margin-left: auto;           /* 贴到这一行的最右边 */
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    height: 24px;                /* 与「?」圆键同高 */
+    padding: 0 10px;
+    border: 1px solid var(--c-border);
     border-radius: 999px;
-    color: var(--c-text-faint);
+    background: none;
+    color: var(--c-text-secondary);
     font-family: inherit;
     font-size: 12px;
-    line-height: 1.2;
+    line-height: 1;
     cursor: pointer;
-    transition: background-color 0.15s, color 0.15s;
+    transition: color 0.15s, border-color 0.15s, background-color 0.15s;
 }
 .paste-clear:hover {
+    border-color: var(--c-danger);
+    color: var(--c-danger);
     background: var(--c-danger-soft);
-    color: var(--c-danger-deep);   /* 擦除类动作才在 hover 时露一点红,静态态保持安静 */
 }
 
 #paste-input {
@@ -2444,9 +2444,8 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
        现在分工交给 .paste-primary / .paste-actions-minor 自己定义(见首页那一节) */
     .paste-box { padding: 3px 8px 8px; }   /* 内边距跟着盒子走(边框在盒子上) */
     #paste-input { min-height: 120px; }
-    /* 手机档把角标放大一档(20px 高对指头太细),但仍明显小于下排的 40px 次要按钮 */
-    .paste-field-head { min-height: 26px; }
-    .paste-clear { padding: 5px 12px; font-size: 13px; }
+    /* 手机档把「清空」放大一档(24px 高对指头偏细),仍明显小于下排的 40px 次要按钮 */
+    .paste-clear { height: 28px; padding: 0 12px; font-size: 13px; }
 }
 
 /* 工具栏分组标签:看 / 选 / 🤖 三组,一眼分清视图与勾选 */

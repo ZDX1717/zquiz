@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1095">
+    <link rel="stylesheet" href="styles.css?v=1096">
 </head>
 <body>
     <div class="container">
@@ -110,17 +110,17 @@ A：选项A  B：选项B
                             <p class="meta-note">双行选项、逗号与空格分隔、选项折行、空括号等真实文档排版自动容错；缺答案题入库为"待补"。</p>
                         </div>
                     </details>
+                    <!-- 「清空」= 卡头这一行的最右边(👤 2026-09-14:与「导入题库 ?」同一行)。
+                         做成小药丸,外形向左边那个「?」圆键看齐(同高 24px、同描边色),
+                         两件在一条线上像一对;只是它带词、? 只带符号。
+                         ⚠️ 靠 `margin-left: auto` 贴到行尾 —— 卡头是 flex-start(标题与「?」要挨着),
+                            不能用 space-between,否则标题会被顶到最左、「?」被甩到最右。 -->
+                    <button type="button" id="paste-clear-btn" class="paste-clear" title="清空输入框里的内容">清空</button>
                 </div>
-                <!-- 输入框 + 它**上方**右上角的「清空」(👤 2026-09-14:要在框外面,不在框里面)。
-                     ⚠️ 角标必须在框外单独一行:放进框里会占掉框内一行高度,浮在文字上又会被长行钻到下面。
-                     `.paste-box` 只管边框/圆角/聚焦环,里面就是 textarea 自己。 -->
-                <div class="paste-field">
-                    <div class="paste-field-head">
-                        <button type="button" id="paste-clear-btn" class="paste-clear" title="清空输入框里的内容">清空</button>
-                    </div>
-                    <div class="paste-box">
-                        <textarea id="paste-input" rows="6" placeholder="方式一：把题目文字粘贴到这里&#10;方式二：点「选择文件」，目前支持 Word / PDF / txt"></textarea>
-                    </div>
+                <!-- 输入框 = 一个盒子(边框/圆角/聚焦环都挂在盒子上,里面就是 textarea 自己)。
+                     「清空」不在这里 —— 它上了卡头那一行(见 .card-head 末尾)。 -->
+                <div class="paste-box">
+                    <textarea id="paste-input" rows="6" placeholder="方式一：把题目文字粘贴到这里&#10;方式二：点「选择文件」，目前支持 Word / PDF / txt"></textarea>
                 </div>
                 <div class="paste-actions">
                     <button id="paste-parse-btn" class="action-btn paste-primary">解析并预览</button>
@@ -718,6 +718,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1095"></script>
+    <script type="module" src="src/main.js?v=1096"></script>
 </body>
 </html>
