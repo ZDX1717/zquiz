@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1100">
+    <link rel="stylesheet" href="styles.css?v=1101">
 </head>
 <body>
     <div class="container">
@@ -77,6 +77,19 @@
                  ③ 参考(支持格式,默认收起)。
                  ⚠️ 全页只允许**一个主色实心按钮**(#paste-parse-btn);其余一律次要。
                  ⚠️ 「导入撤销」不再独占一张卡片(它与主任务不是一回事,却和它等重)—— 收成卡片里的一行。 -->
+            <!-- ① 版本信息 + 简介(👤 2026-09-14:在导入模块**上方**加一块)。
+                 ⚠️ 两条硬约束:① 手机一屏必须能**同时完整看到这一块和导入卡** —— 所以它压到
+                    两行(名字 + 版本 / 一句简介),多一个字都会把导入卡挤到屏幕外;
+                 ② 版本号从 `src/version.js` 注入(main.js),不在这里手写 ——
+                    写死的版本号迟早和 package.json 对不上(守卫会拦)。 -->
+            <div class="home-about">
+                <p class="home-about-title">
+                    Zquiz · 期末周刷题
+                    <span class="home-about-ver" id="app-version"></span>
+                </p>
+                <p class="home-about-desc">把题目粘进来就能刷:粘贴或选文件 → 预览确认 → 入库刷题。数据只存本机。</p>
+            </div>
+
             <div class="operation-card home-import">
                 <div class="card-head">
                     <h3>导入题库</h3>
@@ -121,6 +134,17 @@ A：选项A  B：选项B
                      「清空」不在这里 —— 它上了卡头那一行(见 .card-head 末尾)。 -->
                 <div class="paste-box">
                     <textarea id="paste-input" rows="6" placeholder="方式一：把题目文字粘贴到这里&#10;方式二：点「选择文件」，目前支持 Word / PDF / txt"></textarea>
+                    <!-- 放大输入框的抓手(👤 2026-09-14:"调节输入框大小的按钮放大一点")。
+                         ⚠️ 原生那只角是浏览器画的,又小又抓不住(手机触屏上基本按不到),而且**改不大**
+                            —— 所以关掉原生(`#paste-input{resize:none}`),自己放一个够大的。
+                         拖它 = 改输入框高度;键盘也能用(聚焦后 ↑↓);上下限在 main.js 里夹住。 -->
+                    <button type="button" id="paste-grip" class="paste-grip"
+                            aria-label="拖动调整输入框高度" title="拖动调整输入框高度">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor"
+                             stroke-width="2" stroke-linecap="round">
+                            <path d="M20 9l-11 11M20 15l-5 5"/>
+                        </svg>
+                    </button>
                 </div>
                 <div class="paste-actions">
                     <button id="paste-parse-btn" class="action-btn paste-primary">解析并预览</button>
@@ -718,6 +742,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1100"></script>
+    <script type="module" src="src/main.js?v=1101"></script>
 </body>
 </html>

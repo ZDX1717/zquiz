@@ -1008,6 +1008,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
    比刷题/结果页(阅读档)明显更宽(👤 反馈"首页明显比后俩页宽")。
    ⚠️ 这里限的是**宽度档位**,与 main 的内边距无关,不要靠调 padding 去解决。 */
 #home-section > .operation-card,
+#home-section > .home-about,
 #home-section > .install-hint,
 #banks-section > .banks-header,
 #banks-section > .banks-list {
@@ -1025,6 +1026,32 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 .operation-card h3 {
     margin-bottom: 16px;
     color: var(--c-text);
+}
+
+/* 版本信息 + 简介(👤 2026-09-14:在导入模块上方加一块)。
+   ⚠️ 手机一屏要同时装下它和导入卡 ⇒ 只给两行:标题行(名字 + 版本)与一句简介。
+      别往里加第二句介绍、也别加图标 —— 加什么都是从导入卡的高度里抢。 */
+.home-about { margin-bottom: 12px; }
+.home-about-title {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--c-text);
+}
+.home-about-ver {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--c-text-faint);   /* 版本是次要信息,别跟站名抢重 */
+}
+.home-about-desc {
+    margin: 4px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--c-text-secondary);
 }
 
 /* ==================== 首页(👤 2026-09-13 重构:简洁易读、主次得当、手机优先)====================
@@ -1171,12 +1198,38 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
    ⚠️ 边框挂在盒子上而不是 textarea 上:聚焦时换的是盒子的边色,
       语义上"整个输入区被激活",也免得角标那种框外元素与 textarea 的边线纠缠。 */
 .paste-box {
+    position: relative;          /* 抓手的定位参照 */
     border: 1px solid var(--c-border);
     border-radius: 6px;
     background: var(--c-surface);
-    padding: 6px;
+    /* 底边多留 18px:抓手住在那条带子里,不压文字(压在文字上迟早遮住某一行) */
+    padding: 6px 6px 18px;
 }
 .paste-box:focus-within { border-color: var(--c-primary); }   /* 聚焦环跟着盒子走 */
+
+/* 放大输入框的抓手(👤 2026-09-14:"调节输入框大小的按钮放大一点")。
+   ⚠️ 原生那只角(`resize: vertical` 给的)是浏览器画的:小、手机按不到、而且**改不大** ——
+      所以关掉原生,自己放一个 26×26(手机 32×32)的,拖它改高度;键盘也能用(↑↓)。 */
+.paste-grip {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 26px;
+    height: 26px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;                 /* 必须显式写,否则露浏览器默认黑边 */
+    background: none;
+    color: var(--c-text-faint);
+    cursor: ns-resize;
+    touch-action: none;           /* 手机上别把拖拽当成滚动 */
+    border-radius: 6px;
+}
+.paste-grip svg { width: 16px; height: 16px; }
+.paste-grip:hover,
+.paste-grip:focus-visible { color: var(--c-primary); background: var(--c-surface-alt); }
 /* 「清空」= 卡头那一行**行尾**的小药丸(👤 2026-09-14)。
    外形向同行的「?」圆键看齐:同高 24px、同描边色、同圆角气质(一个带词、一个只带符号),
    于是这一行读起来是"标题 · 说明 · 动作"三件,而不是"标题旁边趴着一块无关的按钮"。
@@ -1217,7 +1270,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     padding: 0 2px;
     font-size: 16px;   /* >=16px:避免 iOS 聚焦自动放大 */
     line-height: 1.7;
-    resize: vertical;
+    resize: none;                 /* 原生调节角关掉:换成 .paste-grip,见上 */
     min-height: 120px;
     font-family: inherit;
     word-break: break-word;
@@ -2446,6 +2499,11 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     #paste-input { min-height: 120px; }
     /* 手机档把「清空」放大一档(24px 高对指头偏细),仍明显小于下排的 40px 次要按钮 */
     .paste-clear { height: 28px; padding: 0 12px; font-size: 13px; }
+    /* 🚨 一屏装下「简介 + 导入卡」两个模块:输入框默认矮一档(5 行),要写长文就拖右下角抓手放大。
+       实测 360×640 小屏(减掉底部导航 51px 还有 589px 可见)也放得下,见 DESIGN §3.11。 */
+    #paste-input { height: 132px; }
+    .paste-grip { width: 32px; height: 32px; }
+    .paste-grip svg { width: 18px; height: 18px; }
 }
 
 /* 工具栏分组标签:看 / 选 / 🤖 三组,一眼分清视图与勾选 */

@@ -2,6 +2,7 @@ import { buildAiNotes } from './ai.js';
 import { state } from './state.js';
 import { pushUndo, canUndo, canRedo, undoLabel, redoLabel, clearUndo, assignExact, cloneQuestion } from './undo.js';
 import { applyTheme, initTheme, cycleThemeSetting, setThemeSetting } from './theme.js';
+import { APP_VERSION } from './version.js';
 import { buildCardCells, finalizeQuestion, formatQuestionsForExport, normalizeAnswerString, parseQuestionsText, questionDedupKey, shuffleArray, splitInlineOptions, splitBankSections, bankSectionHeader } from './parser.js';
 import { deleteBankVersion, loadAutoNextSetting, loadBankVersions, loadCollapsedBanks, loadFromLocalStorage, loadMasterySetting, pushBankVersion, saveAutoNextSetting, saveCollapsedBanks, saveMasterySetting, saveToLocalStorage, recordImportBatch } from './storage.js';
 import { downloadFile, hideModal, showModal } from './dom.js';
@@ -93,6 +94,8 @@ const cancelRenameBankBtn = document.getElementById('cancel-rename-bank-btn');
 const pasteInput = document.getElementById('paste-input');
 const pasteParseBtn = document.getElementById('paste-parse-btn');
 const pasteClearBtn = document.getElementById('paste-clear-btn');
+const pasteGrip = document.getElementById('paste-grip');
+const appVersionEl = document.getElementById('app-version');
 const importPreviewModal = document.getElementById('import-preview-modal');
 const previewSummary = document.getElementById('preview-summary');
 const previewSelectAll = document.getElementById('preview-select-all');
@@ -227,6 +230,51 @@ function updateSourceUI() {
 }
 
 // 初始化
+// 放大输入框的抓手(👤 2026-09-14:原生那只角太小/手机按不到)。
+// 拖它改输入框高度;键盘也能用(聚焦后 ↑↓ 每次 24px)。上下限夹在这里,不靠 CSS 兜。
+// ⚠️ 用 Pointer Events(鼠标 / 触屏统一),并在 `.paste-grip` 上写 `touch-action: none`,
+//    否则手机上这一拖会被当成页面滚动,手指一动就跑了。
+function setupPasteGrip() {
+    if (!pasteGrip || !pasteInput) return;
+    const MIN_H = 88;                                  // 再矮就连两行都看不全
+    const maxH = () => Math.max(MIN_H + 24, Math.round(window.innerHeight * 0.6));  // 别把按钮区顶出屏幕
+    const applyHeight = (h) => {
+        const clamped = Math.max(MIN_H, Math.min(maxH(), Math.round(h)));
+        pasteInput.style.height = clamped + 'px';
+    };
+    const currentHeight = () => pasteInput.getBoundingClientRect().height;
+
+    let dragging = false, startY = 0, startH = 0;
+    pasteGrip.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        startY = e.clientY;
+        startH = currentHeight();
+        if (pasteGrip.setPointerCapture && e.pointerId !== undefined) {
+            try { pasteGrip.setPointerCapture(e.pointerId); } catch (err) { /* 老浏览器:忽略 */ }
+        }
+        e.preventDefault();                            // 别让拖拽选中旁边的文字
+    });
+    pasteGrip.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        applyHeight(startH + (e.clientY - startY));
+    });
+    const stop = (e) => {
+        if (!dragging) return;
+        dragging = false;
+        if (pasteGrip.releasePointerCapture && e && e.pointerId !== undefined) {
+            try { pasteGrip.releasePointerCapture(e.pointerId); } catch (err) { /* 忽略 */ }
+        }
+    };
+    pasteGrip.addEventListener('pointerup', stop);
+    pasteGrip.addEventListener('pointercancel', stop);
+    // 键盘可达:焦点在抓手时上下键改高度(每步 24px)
+    pasteGrip.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        applyHeight(currentHeight() + (e.key === 'ArrowDown' ? 24 : -24));
+    });
+}
+
 function init() {
     markStandalone();
     // 主题(暗色模式)先行,避免闪白
@@ -469,6 +517,9 @@ function setupEventListeners() {
     viewAllBtn.addEventListener('click', () => setPreviewView(false));
     viewWarnedBtn.addEventListener('click', () => setPreviewView(true));
     pasteClearBtn.addEventListener('click', clearPasteInput);
+    setupPasteGrip();
+    // 版本号只从 src/version.js 来(守卫会核它和 package.json 一致);HTML 里不写死第二个数字
+    if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
 
     // 导入预览向导
     previewSelectAll.addEventListener('change', togglePreviewSelectAll);
@@ -614,6 +665,8 @@ if (typeof window === 'undefined') {
         applyTheme,
         setThemeSetting,
         cycleThemeSetting,
+        setupPasteGrip,
+        APP_VERSION,
         navigate,
         buildCardCells,
         openAnswerCard,

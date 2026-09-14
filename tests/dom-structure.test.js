@@ -117,6 +117,55 @@ test('「⚙ AI 设置」住在标题栏右侧一组,且**在主题键左边**(�
     assert.ok(/header nav\s*\{[^}]*flex\s*:\s*none/.test(cssNoComments), '导航宽度不参与伸缩');
 });
 
+test('首页顶部:版本信息 + 简介模块(👤 2026-09-14 要求加在导入模块上方)', () => {
+    const home = html.slice(html.indexOf('id="home-section"'), html.indexOf('id="quiz-section"'));
+    const aboutIdx = home.indexOf('class="home-about"');
+    const cardIdx = home.indexOf('operation-card home-import');
+    assert.ok(aboutIdx > -1 && aboutIdx < cardIdx, '简介模块应在**导入卡上方**');
+    assert.ok(/id="app-version"/.test(home), '版本号要有自己的落点(#app-version)');
+    assert.ok(/class="home-about-desc"/.test(home), '要有那句简介');
+    // 版本号只从 src/version.js 来:HTML 里不许写死第二个数字
+    assert.ok(!/id="app-version"[^>]*>\s*v?\d/.test(home), 'HTML 里不许写死版本号(会与 package.json 漂移)');
+    const main = readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
+    assert.ok(/appVersionEl\.textContent = 'v' \+ APP_VERSION/.test(main), 'main.js 应从 APP_VERSION 注入版本号');
+    // 🚨 守卫:src/version.js 必须与 package.json 完全一致(版本号是"已发布的事实",两处不许漂移)
+    const ver = readFileSync(path.join(root, 'src', 'version.js'), 'utf8');
+    const inCode = (ver.match(/APP_VERSION = '([^']+)'/) || [])[1];
+    const inPkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+    assert.ok(inCode, 'src/version.js 里应有 APP_VERSION');
+    assert.strictEqual(inCode, inPkg,
+        `src/version.js(${inCode})与 package.json(${inPkg})必须一致 —— 发布时两处一起改`);
+    // 简介模块两行封顶:手机一屏要同时装下它和导入卡,多一行都是从导入卡里抢高度
+    assert.ok(/\.home-about \.home-about-desc/.test(cssNoComments) || /\.home-about-desc\s*\{/.test(cssNoComments),
+        '简介那句要有自己的样式(字号小一档)');
+});
+
+test('放大输入框的抓手:够大、可拖、可键控、上下限夹住(👤 2026-09-14:"按钮放大一点")', () => {
+    const home = html.slice(html.indexOf('id="home-section"'), html.indexOf('id="quiz-section"'));
+    assert.ok(/id="paste-grip"/.test(home), '要有抓手元素');
+    assert.ok(home.indexOf('id="paste-grip"') > home.indexOf('id="paste-input"'),
+        '抓手要排在输入框之后(定位在它右下角)');
+    // 关掉原生那只小角,换成自己的
+    assert.ok(/#paste-input\s*\{[^}]*resize\s*:\s*none/.test(cssNoComments),
+        '原生 resize 必须关掉(浏览器画的那只角改不大)');
+    const grip = cssNoComments.match(/\n\.paste-grip \{([^}]*)\}/);
+    assert.ok(grip, '应有 .paste-grip 规则');
+    assert.ok(/width\s*:\s*26px/.test(grip[1]) && /height\s*:\s*26px/.test(grip[1]),
+        '桌面抓手 26×26(比原生那只角大一截)');
+    assert.ok(/border\s*:\s*none/.test(grip[1]), '按钮类必须显式声明 border');
+    assert.ok(/touch-action\s*:\s*none/.test(grip[1]),
+        '必须 touch-action:none,否则手机上这一拖会被当成页面滚动');
+    assert.ok(/cursor\s*:\s*ns-resize/.test(grip[1]), '光标要表明"能上下拖"');
+    assert.ok(/\.paste-grip \{ width: 32px; height: 32px; \}/.test(cssNoComments), '手机档抓手再放大到 32×32');
+    // 行为:拖拽 + 键盘 + 上下限
+    const main = readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
+    for (const ev of ["'pointerdown'", "'pointermove'", "'pointerup'", "'ArrowUp'", "'ArrowDown'"]) {
+        assert.ok(main.includes(ev), `main.js 应处理 ${ev}`);
+    }
+    assert.ok(/MIN_H\s*=\s*\d+/.test(main) && /Math\.min\(maxH\(\)/.test(main),
+        '高度要被上下限夹住(下限别矮到看不见、上限别把按钮顶出屏幕)');
+});
+
 test('开始刷题按钮必须全屏宽隐藏(不能只写在手机媒体查询里)', () => {
     // 回归:该规则原先只写在 @media (max-width:768px) 内,
     // 导致桌面上"结果页上方还挂着一个开始刷题按钮"(👤 反馈)。
@@ -463,7 +512,7 @@ test('监听器不许把"首参是开关"的函数裸挂上去(👤 报"只复�
 
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {
     const cssText = String(cssNoComments);
-    for (const sel of ['#home-section > .operation-card', '#banks-section > .banks-list']) {
+    for (const sel of ['#home-section > .operation-card', '#home-section > .home-about', '#banks-section > .banks-list']) {
         const re = new RegExp(sel.replace(/[.#>]/g, (c) => '\\' + c) + '[^{]*\\{([^}]*)\\}');
         const m = cssText.match(re);
         assert.ok(m, `应有 ${sel} 的宽度规则`);
