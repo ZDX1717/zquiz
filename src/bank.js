@@ -274,9 +274,10 @@ function showPdfNotice(reason, detail) {
     const AI_BTN = '<div class="file-notice-actions"><button type="button" id="file-ai-copy-btn" class="action-btn secondary">📋 复制提示词，去豆包/Kimi 让 AI 提取</button></div>';
     const AI_STEPS = '<p class="file-notice-hint">① 点上方按钮复制提示词 → 打开豆包 / Kimi / DeepSeek → <b>把 PDF 文件附到对话里</b> → 把它回复的文字粘回输入框。注意:材料会上传给该 AI 服务。</p>';
     if (reason === 'encrypted') {
+        // ⚠️ 这里**不重复 detail**:抛出的错误消息本身就是"这份 PDF 有密码保护…",
+        //    和标题一模一样 —— 实测线上会渲染成"这份 PDF 有密码保护这份 PDF 有密码保护,先解锁…"
         showFileNotice(
             '<b>📄 这份 PDF 有密码保护</b>' +
-            `<p class="file-notice-hint">${detail || ''}</p>` +
             '<p class="file-notice-hint">① 用它打开:要密码就输密码;不用密码也能打开的话,说明只是「权限密码」,另存一份不加密的副本,再选那个副本。</p>' +
             '<p class="file-notice-hint">② 或者打开后直接选中文字复制,粘到输入框。</p>',
             'warning'
