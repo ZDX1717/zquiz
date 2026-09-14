@@ -446,9 +446,12 @@ test('真文件回归:👤 的《强化练习(二案例型选择题)》第 1 页
     // 真实文件比合成件更能压出问题(这份一次就压出"不看 cm"和"剪尾部字节"两个真因)。
     // 文件在仓库外的语料目录里 —— 没有就跳过,不影响 CI 之外的环境。
     const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const name = '强化练习（二案例型选择题）.pdf';
+    // 👤 2026-09-14 定的约定:**真实文件统一放工作区的 真题/**,AI 随时取用
+    // (原 corpus/ 已合并进来并删除)。
     const candidates = [
-        path.join(root, '..', '强化练习（二案例型选择题）.pdf'),
-        path.join(root, 'corpus', 'raw', '强化练习（二案例型选择题）.pdf'),
+        path.join(root, '..', '真题', name),
+        path.join(root, '..', name),
     ];
     const file = candidates.find(f => existsSync(f));
     if (!file) { t.skip('语料文件不在本机'); return; }
@@ -486,7 +489,8 @@ test('有真实 /Widths 时:两栏之间的空隙要补空格(选项才不会粘
 
 test('真文件端到端:66 题每题 4 个选项(两栏选项靠 CJK 分隔符切开)', async (t) => {
     const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-    const file = [path.join(root, '..', '强化练习（二案例型选择题）.pdf')].find(f => existsSync(f));
+    const name = '强化练习（二案例型选择题）.pdf';
+    const file = [path.join(root, '..', '真题', name), path.join(root, '..', name)].find(f => existsSync(f));
     if (!file) { t.skip('语料文件不在本机'); return; }
     const { text } = await pdfToText(new Uint8Array(readFileSync(file)));
     const { parseQuestionsText } = await import('../src/parser.js');
