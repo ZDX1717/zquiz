@@ -994,6 +994,7 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
    ⚠️ 这里限的是**宽度档位**,与 main 的内边距无关,不要靠调 padding 去解决。 */
 #home-section > .operation-card,
 #home-section > .home-fold,
+#home-section > .install-hint,
 #banks-section > .banks-header,
 #banks-section > .banks-list {
     max-width: var(--reading-width);

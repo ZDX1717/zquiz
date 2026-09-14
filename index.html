@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1067">
+    <link rel="stylesheet" href="styles.css?v=1068">
 </head>
 <body>
     <div class="container">
@@ -113,6 +113,18 @@ A：选项A  B：选项B
                     <p class="meta-note">双行选项、逗号与空格分隔、选项折行、空括号等真实文档排版自动容错；缺答案题入库为"待补"。</p>
                 </div>
             </details>
+
+            <!-- 装到主屏的引导(👤 P0-1.4):iOS 没有 beforeinstallprompt,只能"教一句";
+                 **不做弹窗**。👤 2026-09-13:从**题库页底部**挪到**首页底部** ——
+                 在题库页它是一块压在列表下面的浅灰空框(看着像一条"空白栏"),且用户
+                 想装 App 的时机是在首页(第一次进来),不在管理题库的时候。
+                 手机档才显示,已在主屏全屏运行时自动隐藏(CSS 的 display-mode 媒体查询
+                 + main.js 给的 .is-standalone 类,双保险)。 -->
+            <p class="install-hint">
+                <span aria-hidden="true">📱</span> 手机上可把 Zquiz 加到主屏,像 App 一样全屏用 ——
+                <b>iPhone</b>:分享 <span aria-hidden="true">⎋</span> → 「添加到主屏幕」;
+                <b>安卓</b>:浏览器菜单 → 「安装应用 / 添加到主屏幕」
+            </p>
             </section>
 
             <section id="quiz-section" class="section">
@@ -276,14 +288,6 @@ A：选项A  B：选项B
                 <div id="banks-list" class="banks-list">
                     <p class="empty-message">暂无题库</p>
                 </div>
-                <!-- 装到主屏的引导(👤 P0-1.4):iOS 没有 beforeinstallprompt,只能"教一句";
-                     位置放在题库页底部、**不做弹窗**;手机档才显示,已在主屏全屏运行时自动隐藏
-                     (CSS 的 display-mode 媒体查询 + main.js 给的 .is-standalone 类,双保险)。 -->
-                <p class="install-hint">
-                    <span aria-hidden="true">📱</span> 手机上可把 Zquiz 加到主屏,像 App 一样全屏用 ——
-                    <b>iPhone</b>:分享 <span aria-hidden="true">⎋</span> → 「添加到主屏幕」;
-                    <b>安卓</b>:浏览器菜单 → 「安装应用 / 添加到主屏幕」
-                </p>
             </section>
         </main>
 
@@ -666,6 +670,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1067"></script>
+    <script type="module" src="src/main.js?v=1068"></script>
 </body>
 </html>

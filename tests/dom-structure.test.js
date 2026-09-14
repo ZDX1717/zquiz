@@ -181,6 +181,11 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
     // ④ 折叠块也走阅读档宽度(与首页卡片同宽,不然桌面上一宽一窄)
     assert.ok(/#home-section > \.home-fold[^{]*\{[^}]*max-width\s*:\s*var\(--reading-width\)/.test(cssNoComments),
         '首页折叠块应走阅读档宽度');
+    assert.ok(/#home-section > \.install-hint[^{]*\{[^}]*max-width\s*:\s*var\(--reading-width\)/.test(cssNoComments),
+        '「加到主屏」引导也走阅读档宽度(否则与首页其它模块不同宽)');
+    // 引导必须在**最后**:它是最不重要的内容,不许挤到主任务前面
+    assert.ok(home.indexOf('install-hint') > home.indexOf('id="format-help"'),
+        '「加到主屏」引导应是首页最后一块(排在主任务/补救/参考之后)');
     // ⑤ 手机档:主键 ≥48px、次键 ≥40px —— 主次也体现在尺寸上
     const media = cssNoComments.slice(cssNoComments.indexOf('max-width: 768px'));
     assert.ok(/\.paste-primary\s*\{[^}]*min-height\s*:\s*48px/.test(cssNoComments),

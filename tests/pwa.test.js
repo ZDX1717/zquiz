@@ -175,7 +175,17 @@ test('本批的范围边界:不引入 service worker(离线缓存已由 👤 取
 });
 
 test('装到主屏的引导:只在手机档显示,且已装(独立窗口)时自动隐藏', () => {
-    assert.ok(/class="install-hint"/.test(html), '题库页底部应有"加到主屏"的引导');
+    assert.ok(/class="install-hint"/.test(html), '首页应有"加到主屏"的引导');
+    // 👤 2026-09-13:从**题库页底部**挪到**首页底部**。
+    // 在题库页它是一块压在列表下面的浅灰框,看着像一条"悬浮的空白栏";
+    // 而且用户想装 App 的时机是第一次进首页,不是管理题库的时候。
+    const homeStart = html.indexOf('id="home-section"');
+    const quizStart = html.indexOf('id="quiz-section"');
+    const hintAt = html.indexOf('class="install-hint"');
+    assert.ok(hintAt > homeStart && hintAt < quizStart, '引导应在**首页**里(在 quiz-section 之前)');
+    const banksStart = html.indexOf('id="banks-section"');
+    assert.ok(!html.slice(banksStart).includes('install-hint'),
+        '题库页底部不许再留这条引导 —— 它在那儿就是一块"悬浮的空白栏"');
     assert.ok(/添加到主屏幕/.test(html) && /安装应用/.test(html), '要分别给出 iPhone 与安卓的操作路径');
     const hint = cssNoCommentsForPwa.match(/\n\.install-hint \{\n?\s*([^}]*)\}/);
     assert.ok(hint && /display\s*:\s*none/.test(hint[1]), '默认(桌面档)应隐藏 —— 这条引导只对手机有意义');
