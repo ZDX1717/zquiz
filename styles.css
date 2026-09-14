@@ -49,7 +49,7 @@
     --c-review-wrong-bg: #fff5f5;    /* 回顾·答错行底 */
     --c-ai-connected-text: #1e7e46;  /* AI 已连接文字 */
     --c-ai-connected-bg: #e9f7ef;    /* AI 已连接底 */
-    --c-border-hairline: #eef0f3;    /* 极浅分隔边框(救援区) */
+    --c-border-hairline: #eef0f3;    /* 极浅分隔边框(卡片内的极淡分隔) */
     /* ===== 题库卡配色(👤 2026-09-11 选定的 5 色 + 默认灰)=====
        每色一对:--c-bank-<名字> = 底色,--c-bank-<名字>-border = 边框。
        ⚠️ 成对出现、只在这里定义;卡片靠 [data-color] 取值(见 .bank-item[data-color=...])。
@@ -1000,7 +1000,6 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
    比刷题/结果页(阅读档)明显更宽(👤 反馈"首页明显比后俩页宽")。
    ⚠️ 这里限的是**宽度档位**,与 main 的内边距无关,不要靠调 padding 去解决。 */
 #home-section > .operation-card,
-#home-section > .home-fold,
 #home-section > .install-hint,
 #banks-section > .banks-header,
 #banks-section > .banks-list {
@@ -1059,39 +1058,6 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 }
 .import-undo-row .meta-note { flex: 1 1 auto; margin: 0; font-size: 12px; }
 .import-undo-row .action-btn { flex: 0 0 auto; }
-
-/* 首页折叠块(补救路径 / 参考材料):默认收起,一行摘要 + 44px 触达 */
-.home-fold {
-    margin-top: 12px;
-    padding: 0 16px;
-    background-color: var(--c-surface-alt);
-    border-radius: 6px;
-}
-.home-fold > summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 44px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--c-text-secondary);
-    cursor: pointer;
-    list-style: none;            /* 去掉默认三角,自己画一个 */
-}
-.home-fold > summary::-webkit-details-marker { display: none; }
-.home-fold > summary::after {
-    content: '▾';
-    margin-left: auto;
-    color: var(--c-text-faint);
-    font-weight: 400;
-    transition: transform 0.15s;
-}
-.home-fold[open] > summary::after { transform: rotate(180deg); }
-.home-fold[open] > summary { border-bottom: 1px solid var(--c-border-light); }
-.home-fold-body { padding: 12px 0 14px; }
-.home-fold-body > :first-child { margin-top: 0; }
-.home-fold-body > :last-child { margin-bottom: 0; }
-.home-fold .rescue-routes { padding-bottom: 14px; margin-top: 12px; }
 
 /* 桌面:主键不拉满(它已经靠颜色和高度分主次),三个动作并排一行 */
 @media (min-width: 769px) {
@@ -2406,68 +2372,32 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
 .status-line.warning { background: var(--c-warn-bg); color: var(--c-warn-text); }
 .status-line.error   { background: var(--c-danger-bg); color: var(--c-danger-text); }
 .status-line button { margin: 4px 8px 2px 0; }
-.rescue-box {
-    margin-top: 12px;
-    border: 1px solid var(--c-border-light);
-    border-radius: 6px;
-    padding: 8px 12px;
-}
-.rescue-title {
-    margin: 0 0 8px;
-    font-weight: 700;
-    color: var(--c-text);
-    font-size: 0.95em;
-}
-/* 救援区 = 「AI 整理成标准格式」(👤 2026-09-13 定名 + 定口径)。
-   两条路**都显示**,按配没配 Key 分主次:主的那条在上(浅底 + 整行 48px 按钮 + 说明),
-   次的在下(白底 + 40px 按钮 + 标签转灰)。`.is-primary` 由 bank.js 在 updateAiSettingsBadge()
-   里切换;HTML 里默认把手动那条写成 is-primary,JS 没跑之前也是对的。
-   ⚠️ 别再退回"A/B 两栏并列各一大段"(272 字、占 57% 屏,重点全无,👤 已否),
-      也别退回"只铺一条"(另一条用户根本发现不了)。 */
-.rescue-routes {
+/* 按需提示区(AI 兜底:复制提示词交给聊天 AI)。
+   👤 2026-09-14:救援区整块删掉,这条路收进状态行下方,**平时占 0 高度**;
+   只有真的用得上才长出来(解析不出题 / 没配 AI Key / AI 整理失败),由 bank.js 一起显隐。
+   ⚠️ 按钮与说明是一件事的两半,必须同进同出 —— 只露按钮不说发给谁,等于把活儿甩给用户猜。
+   ⚠️ 高度不占位靠 `.hidden`(display:none),不是 `visibility` —— 后者照样占布局高度。 */
+.ai-fallback {
     display: flex;
-    flex-direction: column;
-    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
     margin-top: 8px;
-}
-.rescue-route {
-    border: 1px solid var(--c-border-hairline);
+    padding: 10px 12px;
+    background: var(--c-surface-alt);
     border-radius: 8px;
-    padding: 10px;
-    order: 2;                                   /* 次:排在后面 */
-    background: var(--c-surface);
 }
-.rescue-route.is-primary {
-    order: 1;                                   /* 主:排在最前 */
-    padding: 12px;
-    background: var(--c-surface-alt);            /* 浅底,与次要那条一眼分开 */
-    border-color: var(--c-border);
-}
-/* 路线名:主的那条重、次要那条灰(尺寸不拉开,免得又变成标题墙) */
-.rescue-route-name {
-    margin: 0 0 8px;
-    font-size: 13px;
+.ai-fallback.hidden { display: none; }
+.ai-fallback .action-btn { min-height: 40px; padding: 0 12px; font-size: 14px; }
+.ai-fallback-note {
+    flex: 1 1 160px;             /* 说明吃掉剩余宽度,窄屏自动折到按钮下一行 */
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
     color: var(--c-text-secondary);
 }
-.rescue-route.is-primary .rescue-route-name {
-    color: var(--c-text);
-    font-weight: 600;
-}
-/* 主操作整行、手机拇指目标;次要那条小一号(颜色都还是 secondary —— 首页只许一个主色实心键) */
-.rescue-main { width: auto; min-height: 40px; }
-.rescue-route.is-primary .rescue-main { width: 100%; min-height: 44px; }
-@media (max-width: 768px) {
-    .rescue-route.is-primary .rescue-main { min-height: 48px; }
-}
-.rescue-route-hint {
-    margin: 8px 0 0;
-    font-size: 0.82em;
-    color: var(--c-text-faint);
-}
-.rescue-route .prompt-toggle { margin-top: 8px; }
-/* 一键整理那句说明随 Key 状态换:没配 Key 时说"先去配",配好了说"结果会怎样" */
-#ai-rescue:not(.auto-ready) .rescue-route-hint[data-when="ready"] { display: none; }
-#ai-rescue.auto-ready .rescue-route-hint[data-when="needkey"] { display: none; }
+.ai-fallback .prompt-toggle { flex: 0 0 auto; }
+.ai-fallback .prompt-content { flex: 1 1 100%; }   /* 提示词正文整行铺开 */
 
 /* 预览视图切换(双 tab) */
 .preview-view-switch {

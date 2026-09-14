@@ -329,52 +329,51 @@ test('单库文件(没有分节标记)仍走原来的单库流程', () => {
 
 // ==================== 首页导入流程对齐(👤 2026-09-13 定口径)====================
 // 生成的流程:提示词给出两条路(粘贴 / 选文件)→ 选到 doc/pdf 给专门提示 →
-// 解析不出题目时**必须**提示 + 自动展开救援区。三件事,少一件用户就找不到路。
+// 解析不出题目时**必须**提示 + 自动露出按需提示区。三件事,少一件用户就找不到路。
 const HTML_SRC = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'index.html'), 'utf8');
 
-test('解析不出题目 → 提示 + 自动展开「AI 格式整理」救援区(不能只在状态行里提一句)', () => {
-    elements['ai-rescue'].open = false;
+test('解析不出题目 → 提示 + 自动露出「按需提示区」(不能只在状态行里提一句)', () => {
+    // 初始态:提示区是收着的(HTML 上带 hidden)
+    elements['ai-fallback'].className = 'ai-fallback hidden';
     elements['paste-input'].value = '今天天气不错，我去公园散步，看到很多花，心情很好。';
     run('parsePastedText()');
     const st = elements['import-status'];
     assert.ok(String(st.className).includes('error'), '应是错误态提示');
-    assert.strictEqual(elements['ai-rescue'].open, true,
-        '解析不出来必须**自动展开**救援区 —— 光提示"上方有…"而那段是收起的,等于什么都没给');
+    assert.strictEqual(elements['ai-fallback']._classes.has('hidden'), false,
+        '解析不出来必须**自动露出**提示区 —— 光提示"可以复制提示词"而那个按钮是收着的,等于什么都没给');
     assert.ok(!/复制官方提示词/.test(String(st.textContent)),
         '不许再引用界面上不存在的名字「复制官方提示词」');
-    assert.ok(/AI 整理成标准格式/.test(String(st.textContent)),
-        '提示要点名那个区的**新名字**(👤 2026-09-13 定名),实际:' + st.textContent);
-    // 👤 2026-09-13:状态行**只报"出了什么事 + 往哪走"**,不许再把救援区的按钮逐个念一遍
-    // (救援区就在下面且自动展开,复述一遍只会变成一堵字)
+    assert.ok(/AI 整理输入框/.test(String(st.textContent)),
+        '提示要点名下排那个按钮的**真名字**(👤 2026-09-14 改名),实际:' + st.textContent);
+    // 状态行**只报"出了什么事 + 往哪走"**,不把按钮逐个念一遍(按钮就在下面且已露出来,复述只会变成一堵字)
     assert.ok(String(st.textContent).length <= 32,
         '失败提示要短(≤32 字),实际 ' + String(st.textContent).length + ' 字:' + st.textContent);
+    // 清空 = 回到初始态:提示区也要收回去(它只对"眼前这批文字"有意义)
+    run('clearPasteInput()');
+    assert.strictEqual(elements['ai-fallback']._classes.has('hidden'), true, '清空后提示区应收起');
 });
 
-test('AI 整理成标准格式:两条路都留着,按配没配 Key 只换主次', () => {
-    // 🚨 判据 = aiConfigReady(**配没配好 Key**),不是"测没测过" —— 一键整理能不能跑只看配没配。
-    // 目标:两条路都留在屏幕上(藏掉一条,用户就永远发现不了它),只换谁在主位。
-    const manual = sandbox.document.querySelector('#ai-rescue .rescue-route[data-route="manual"]');
-    const auto = sandbox.document.querySelector('#ai-rescue .rescue-route[data-route="auto"]');
-    assert.ok(manual && auto, '两条路的元素要能取到');
-
-    // ① 没配 Key(默认)→ 手动在主位
+test('AI 兜底那句说明随配没配 Key 换(👤 2026-09-14:按钮逻辑与提示区逻辑合成一处)', () => {
+    // 🚨 判据 = aiConfigReady(**配没配好 Key**),不是"测没测过" —— AI 整理能不能跑只看配没配。
+    // 两条路不再分主次:AI 整理输入框常驻在下排,复制提示词常驻在按需提示区(由出错时露出来),
+    // 只有那句**说明文字**随 Key 状态换 —— 这就是"按钮的逻辑与提示区的逻辑结合"。
+    // ① 没配 Key(默认)→ 说清"不用配 Key 也能用"
     store.set('aiConfig', JSON.stringify({ providerId: 'zhipu', apiKey: '', baseUrl: '', model: '' }));
     run('updateAiSettingsBadge()');
-    assert.strictEqual(elements['ai-rescue']._classes.has('auto-ready'), false, '没配 Key 不该打 auto-ready');
-    assert.strictEqual(manual._classes.has('is-primary'), true, '没配 Key:复制提示词那条应在主位');
-    assert.strictEqual(auto._classes.has('is-primary'), false, '没配 Key:一键整理应退居次席');
+    const noKey = String(elements['ai-fallback-note'].textContent);
+    assert.ok(/不用配 Key/.test(noKey), '没配 Key 时说明要写清"这条路不用配 Key 也能走",实际:' + noKey);
 
-    // ② 配好 Key → 主次对调
+    // ② 配好 Key → 换成"也可以…"(不再强调免 Key,而是说清结果粘回哪)
     store.set('aiConfig', JSON.stringify({ providerId: 'zhipu', apiKey: 'k-123', baseUrl: '', model: '' }));
     run('updateAiSettingsBadge()');
-    assert.strictEqual(elements['ai-rescue']._classes.has('auto-ready'), true, '配好 Key 应打 auto-ready');
-    assert.strictEqual(auto._classes.has('is-primary'), true, '配好 Key:一键整理应在主位');
-    assert.strictEqual(manual._classes.has('is-primary'), false, '配好 Key:复制提示词应退居次席');
+    const withKey = String(elements['ai-fallback-note'].textContent);
+    assert.ok(/也可以/.test(withKey), '配好 Key 后说明应换成"也可以…",实际:' + withKey);
+    assert.ok(/粘回输入框/.test(withKey) && /粘回输入框/.test(noKey), '两种说明都要交代"把结果粘回输入框"');
 
-    // ③ 两条路都在 DOM 里,且没有任何一条被 display:none 藏掉(样式断言在 dom-structure.test.js)
-    const sec = HTML_SRC.slice(HTML_SRC.indexOf('id="ai-rescue"'), HTML_SRC.indexOf('</details>', HTML_SRC.indexOf('id="ai-rescue"')));
-    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'), '两条路都要标 data-route');
-    assert.ok(!sec.includes('<h4>'), '不该再有「A · 手动整理…」这类标题墙');
+    // ③ 不再有"藏掉一条路"的机制:`.is-primary` / `.auto-ready` 连同救援区一起退场
+    const bank = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'bank.js'), 'utf8');
+    assert.ok(!/auto-ready|is-primary/.test(bank), '救援区的主次切换逻辑应已删除(bank.js 里不该再有它的痕迹)');
+    assert.ok(!/id="ai-rescue"/.test(HTML_SRC), '救援区不该回到 HTML 里');
 });
 
 test('提示文案里引用的按钮名必须真实存在于界面(文案与界面不许各说各话)', () => {

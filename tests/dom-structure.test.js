@@ -213,28 +213,24 @@ test('首页:三层结构 + 全页只有一个主色实心按钮(👤 2026-09-13
     // 和一个描边次要按钮并列会读成"往里加东西"的同类动作。现在用 .paste-clear 小药丸。
     assert.ok(/id="paste-clear-btn" class="paste-clear"/.test(home), '「清空」应是 .paste-clear 角标');
     assert.ok(!/id="paste-clear-btn" class="action-btn/.test(home), '不该再是 .action-btn')
-    // ③ 补救路径默认**收起**(它不是主任务,常驻会占掉手机半屏)。
-    //    参考材料(格式说明)不再走折叠块 —— 它收成了卡片右上角的「?」悬浮面板(见下一个测试)。
-    assert.ok(/<details id="ai-rescue" class="home-fold">/.test(home), 'ai-rescue 应是折叠块');
-    assert.ok(!/<details id="ai-rescue"[^>]*\sopen/.test(home), '折叠块默认不展开');
-    assert.ok(!home.includes('home-fold-summary">支持的题目格式'),
-        '格式说明不该再是首页底部那个常驻折叠块');
-    // ④ 折叠块也走阅读档宽度(与首页卡片同宽,不然桌面上一宽一窄)
-    assert.ok(/#home-section > \.home-fold[^{]*\{[^}]*max-width\s*:\s*var\(--reading-width\)/.test(cssNoComments),
-        '首页折叠块应走阅读档宽度');
+    // ③ 首页现在是**三层**:主任务(导入卡) / 参考(「?」悬浮面板) / 装到主屏引导。
+    //    「AI 整理成标准格式」救援区整块**删除**(👤 2026-09-14):AI 整理输入框进了下排、
+    //    复制提示词进了按需提示区 —— 不再有一块常驻的"AI 说明书"。
+    assert.ok(!/id="ai-rescue"/.test(home), '救援区折叠块应已删除');
+    assert.ok(!home.includes('home-fold'), '首页不该再有任何折叠块(.home-fold)');
+    assert.ok(!/\.home-fold/.test(cssNoComments), '折叠块的死样式也要一起清掉,别留没人用的 CSS');
+    // ④ 剩下的模块都走阅读档宽度(卡片 / 加到主屏引导),不然桌面上一宽一窄
     assert.ok(/#home-section > \.install-hint[^{]*\{[^}]*max-width\s*:\s*var\(--reading-width\)/.test(cssNoComments),
         '「加到主屏」引导也走阅读档宽度(否则与首页其它模块不同宽)');
     // 引导必须在**最后**:它是最不重要的内容,不许挤到主任务前面
-    assert.ok(home.indexOf('install-hint') > home.indexOf('id="ai-rescue"'),
-        '「加到主屏」引导应是首页最后一块(排在主任务/补救之后)');
+    assert.ok(home.indexOf('install-hint') > home.indexOf('id="ai-fallback"'),
+        '「加到主屏」引导应是首页最后一块(排在主任务与按需提示区之后)');
     // ⑤ 手机档:主键 ≥48px、次键 ≥40px —— 主次也体现在尺寸上
     const media = cssNoComments.slice(cssNoComments.indexOf('max-width: 768px'));
     assert.ok(/\.paste-primary\s*\{[^}]*min-height\s*:\s*48px/.test(cssNoComments),
         '主键应 48px(手机拇指目标)');
     assert.ok(/\.paste-actions-minor \.action-btn\s*\{[^}]*min-height\s*:\s*40px/.test(cssNoComments),
         '次键应 40px(比主键小一号)');
-    assert.ok(/\.home-fold > summary\s*\{[^}]*min-height\s*:\s*44px/.test(cssNoComments),
-        '折叠摘要应 44px 触达');
     // ⑥ CSS 里也不许有"第二个主色实心按钮":#upload-btn 曾被 id 特判染成主色,
     //    类写对了也会被压过去(id 特指度更高)—— 这种"暗桩"必须由测试兜住
     for (const id of ['upload-btn', 'paste-clear-btn', 'copy-prompt-btn', 'rescue-ai-btn']) {
@@ -363,53 +359,54 @@ test('导入输入框的提示词:两条路都要说清(粘贴 / 选文件)(👤
     assert.ok(!/[（(]/.test(ph), '提示词里不该有括号补充');
 });
 
-test('AI 整理成标准格式:两条路都显示 + 按情况分主次 + 文案有预算(👤 2026-09-13 定)', () => {
-    const start = html.indexOf('id="ai-rescue"');
-    const sec = html.slice(start, html.indexOf('</details>', start));
-    // ① 名字:👤 定的区名
-    assert.ok(sec.includes('<summary class="home-fold-summary">AI 整理成标准格式</summary>'),
-        '折叠标题应是「AI 整理成标准格式」');
-    // ② 文案预算:整块可见文字 ≤190 字(历史上两栏并列 272 字、占手机 57% 屏,👤 说读完不知道点哪个)
-    const text = sec.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, '');
-    assert.ok(text.length <= 190, `文案要短(≤190 字),实际 ${text.length} 字 —— 别再往里加解释`);
-    assert.ok(!/A ·|B ·/.test(sec), '不许再有「A · 手动整理…」这种标题墙(它占了最多字数)');
-    // ③ **两条路都在**(不再隐藏任何一条 —— 只铺一条时另一条用户根本发现不了)
-    assert.ok(sec.includes('data-route="manual"') && sec.includes('data-route="auto"'), '两条路都要在');
-    assert.ok(!/rescue-route\[data-route=[^\]]*\][^{]*\{[^}]*display:\s*none/.test(cssNoComments),
-        '不许用 display:none 藏掉整条路 —— 主次靠样式,不靠隐藏');
-    assert.ok(/\.rescue-route\s*\{[^}]*order:\s*2/.test(cssNoComments) &&
-        /\.rescue-route\.is-primary\s*\{[^}]*order:\s*1/.test(cssNoComments),
-        '主次靠 order:主的那条排最前');
-    assert.ok(/\.rescue-route\.is-primary\s*\{[^}]*background:\s*var\(--c-surface-alt\)/.test(cssNoComments),
-        '主的那条要有浅底,与次要那条一眼分开');
-    assert.ok(/\.rescue-route\.is-primary \.rescue-route-name\s*\{[^}]*font-weight:\s*600/.test(cssNoComments),
-        '主那条的路线名要加粗');
-    // ④ 主 = 整行 48px(手机),次 = 40px;颜色都还是 secondary —— 首页只许一个主色实心键
-    assert.ok(/\.rescue-main\s*\{[^}]*min-height:\s*40px/.test(cssNoComments), '次要那条按钮 40px');
-    assert.ok(/\.rescue-route\.is-primary \.rescue-main\s*\{[^}]*width:\s*100%;\s*min-height:\s*44px/.test(cssNoComments),
-        '主那条按钮应整行');
-    const mobileBlocks = [...cssNoComments.matchAll(/@media \(max-width: 768px\) \{([\s\S]*?)\n\}/g)].map(m => m[1]);
-    assert.ok(mobileBlocks.some(b => /\.rescue-route\.is-primary \.rescue-main \{ min-height: 48px; \}/.test(b)),
-        '手机档主按钮应 48px(拇指目标)');
-    for (const id of ['copy-prompt-btn', 'rescue-ai-btn']) {
-        assert.ok(new RegExp(`id="${id}" class="action-btn secondary rescue-main"`).test(html),
-            `${id} 应是 secondary + rescue-main(不许染主色)`);
-    }
-    // ⑤ HTML 默认(JS 还没跑)= 没配 Key 的情形:手动那条在主位
-    assert.ok(/class="rescue-route is-primary" data-route="manual"/.test(sec),
-        '默认应把手动那条写成 is-primary(与"没配 Key 的人占多数"一致)');
-    // ⑥ 一键整理那句说明随 Key 状态换
-    assert.ok(sec.includes('data-when="needkey"') && sec.includes('data-when="ready"'), '两种说明都要在');
-    assert.ok(/#ai-rescue:not\(\.auto-ready\) \.rescue-route-hint\[data-when="ready"\] \{ display: none; \}/.test(cssNoComments),
-        '没配 Key 时不该显示"结果会怎样",该显示"先去配 Key"');
+test('AI 兜底:按钮归位下排 + 复制提示词收进「按需提示区」(👤 2026-09-14)', () => {
+    const home = html.slice(html.indexOf('id="home-section"'), html.indexOf('id="quiz-section"'));
+    // ① 「AI 整理输入框」在下排,挨着「选择文件」(顺序挨着 = DOM 里紧跟其后)
+    const minor = home.slice(home.indexOf('class="paste-actions-minor"'), home.indexOf('</div>', home.indexOf('class="paste-actions-minor"')));
+    assert.ok(minor.includes('id="upload-btn"') && minor.includes('id="rescue-ai-btn"'),
+        '「选择文件」与「AI 整理输入框」应在同一排(.paste-actions-minor)');
+    assert.ok(minor.indexOf('id="upload-btn"') < minor.indexOf('id="rescue-ai-btn"'),
+        'AI 整理输入框应排在「选择文件」右边');
+    assert.ok(home.includes('>🤖 AI 整理输入框</button>'), '按钮名应是「AI 整理输入框」(👤 定的短名)');
+    // ⚠️ 先剥注释:解释"旧名字为什么要改"的注释里**原样写着**那个旧名字(这个坑踩过两次了)
+    assert.ok(!home.replace(/<!--[\s\S]*?-->/g, '').includes('AI 格式整理并填入输入框'),
+        '旧长名不该还在界面上(名字里不许写"怎么用")');
+
+    // ② 「复制提示词和题目」在按需提示区里,和说明同进同出
+    const fb = home.slice(home.indexOf('id="ai-fallback"'), home.indexOf('<!-- ⚠️ 这里原来有个「撤销上次导入」'));
+    assert.ok(fb.includes('id="copy-prompt-btn"'), '复制提示词按钮应在 #ai-fallback 里');
+    assert.ok(fb.includes('id="ai-fallback-note"'), '同一块里要有那句说明(只露按钮不说发给谁 = 把活儿甩给用户猜)');
+    assert.ok(fb.includes('id="prompt-toggle-btn"') && fb.includes('id="prompt-content"'),
+        '「查看提示词内容」也要跟着走(原来在救援区里)');
+    // ③ 默认收着(占 0 高度),靠 .hidden 而不是 visibility
+    assert.ok(/class="ai-fallback hidden"/.test(fb), '提示区默认应是 hidden');
+    assert.ok(/\.ai-fallback\.hidden \{ display: none; \}/.test(cssNoComments),
+        '显隐必须靠 display:none —— visibility 照样占布局高度,等于没收起');
+    assert.ok(/\.ai-fallback\s*\{[^}]*display\s*:\s*flex/.test(cssNoComments), '提示区展开时是一行(按钮 + 说明)');
+    assert.ok(/\.ai-fallback \.action-btn\s*\{[^}]*min-height:\s*40px/.test(cssNoComments),
+        '提示区里的按钮 40px(与下排次要键同档,不许大过主键)');
+
+    // ④ 三条"用得上"的路径都要把它露出来(bank.js)
+    const bank = readFileSync(path.join(root, 'src', 'bank.js'), 'utf8');
+    assert.ok(/export function revealAiFallback\(\)/.test(bank), '应有 revealAiFallback()');
+    const calls = (bank.match(/revealAiFallback\(\);/g) || []).length;
+    assert.ok(calls >= 3, `解析失败 / 没配 Key / AI 整理失败都要露出来,实际只有 ${calls} 处调用`);
+    assert.ok(/hideAiFallback\(\);/.test(bank), '整理成功与清空时要收回去');
+
+    // ⑤ 文案:提示区 + 按钮名一起读得通,且不许再有"救援区说明书"那种长段
+    const text = fb.replace(/<!--[\s\S]*?-->/g, '').replace(/<pre>[\s\S]*?<\/pre>/g, '')
+        .replace(/<[^>]+>/g, ' ').replace(/\s+/g, '');
+    assert.ok(text.length <= 90, `提示区文案要短(≤90 字),实际 ${text.length} 字 —— 它只在出错时露一下`);
 });
 
 test('首页主卡片与救援区:文案里不许再塞括号补充(👤 2026-09-13:"去掉括号里的废话")', () => {
     // 👤 点名的三处:（网页 / 微信 / Word 直接复制）（只改格式，不改内容）（材料里没答案的题留空）
     // 规律:括号里的补充说明基本都是"写了也没人看"的废话;要说的信息就直说,别往括号里塞。
     // ⚠️ 例外:格式示例那段 <pre> 里的括号是**语法本身**(如"……（B）""（多选连写：答案：ABC）"),必须保留。
-    const card = html.slice(html.indexOf('operation-card home-import'),
-        html.indexOf('</details>', html.indexOf('id="ai-rescue"')));
+    // ⚠️ 扫描范围 = 导入卡片到「加到主屏」引导之前;`install-hint` 是 **class 不是 id**(写成 id 会 slice 到文件尾,
+    //    把 AI 设置弹窗、题库页的文案都算进来 —— 那样断言就变成了"在测别人的文案")
+    const cardEnd = html.indexOf('class="install-hint"');
+    const card = html.slice(html.indexOf('operation-card home-import'), cardEnd > -1 ? cardEnd : html.length);
     const noPre = card.replace(/<pre>[\s\S]*?<\/pre>/g, '');
     const text = noPre.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, '|');
     const offenders = text.split('|').map(t => t.trim()).filter(t => /[（(][^）)]*[）)]/.test(t));

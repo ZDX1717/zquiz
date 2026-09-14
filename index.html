@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1091">
+    <link rel="stylesheet" href="styles.css?v=1092">
 </head>
 <body>
     <div class="container">
@@ -108,10 +108,25 @@ A：选项A  B：选项B
                     <button id="paste-parse-btn" class="action-btn paste-primary">解析并预览</button>
                     <div class="paste-actions-minor">
                         <button id="upload-btn" class="action-btn secondary">📂 选择文件</button>
+                        <!-- 👤 2026-09-14:从救援区挪到这里,挨着「选择文件」,并改名「AI 整理输入框」
+                             (原「🤖 AI 格式整理并填入输入框」把"怎么用"写进了名字里,按钮名不该这么长)。
+                             两条路现在一个是"读文件进来"、一个是"把框里的字理顺",都是对**输入框**下手,
+                             并排才说得通;不再各占救援区里的一整块。 -->
+                        <button type="button" id="rescue-ai-btn" class="action-btn secondary">🤖 AI 整理输入框</button>
                     </div>
                 </div>
                 <input type="file" id="file-input" class="hidden" accept=".txt,.md,.csv,.json,.docx,.pdf,.doc" />
                 <div id="import-status" class="status-line">还没有内容：粘贴文字，或点「选择文件」</div>
+                <!-- 按需提示区(👤 2026-09-14:救援区整块删掉,复制提示词这条路收进状态行这儿)。
+                     平时占 0 高度;只有"真的用得上"才长出来 —— 解析不出题、没配 AI Key、AI 整理失败。
+                     ⚠️ 按钮与说明是一件事的两半(按钮负责复制、说明说清发给谁),所以放在同一个块里,
+                        由 bank.js 的 revealAiFallback() 一起显隐;说明文字随"配没配 Key"换。 -->
+                <div id="ai-fallback" class="ai-fallback hidden">
+                    <button type="button" id="copy-prompt-btn" class="action-btn secondary">📋 复制提示词和题目</button>
+                    <p id="ai-fallback-note" class="ai-fallback-note">发给豆包 / Kimi / DeepSeek，把整理结果粘回输入框</p>
+                    <button type="button" id="prompt-toggle-btn" class="prompt-toggle">查看提示词内容 ▾</button>
+                    <pre id="prompt-content" class="prompt-content hidden"></pre>
+                </div>
 
                 <!-- ⚠️ 这里原来有个「撤销上次导入」。👤 2026-09-13 定:**导入的撤销统一走题库版本记录**
                      (批次级撤销语义脆弱:手改过的题指纹变了就撤不掉,结果是"半撤"),
@@ -121,36 +136,10 @@ A：选项A  B：选项B
                      **输入框这个模块** —— 挂在输入框模块的右上角才对位。 -->
             </div>
 
-            <!-- ② AI 整理成标准格式(👤 2026-09-13 定名 + 定口径)
-                 口径:**两条路都显示**,但按"配没配 AI Key"分主次 —— 主的那条在上、按钮整行 48px、
-                 带一句说明和浅色底;次的那条在下、按钮小一号(40px)、标签转灰。
-                 为什么两条都留着:只铺一条时,没配 Key 的人根本不知道"配了 Key 能一键整理";
-                 配了 Key 的人也看不到还有免费的手动路。两条并列 + 主次对比,才知道自己该走哪条。
-                 主次由 bank.js 的 updateAiSettingsBadge() 按 aiConfigReady() 打 `.is-primary` +
-                 `.auto-ready`(类只切换样式,不隐藏任何一条)。默认(没配 Key)手动那条在主位,写在 HTML 里,
-                 JS 没跑之前也是对的。 -->
-            <details id="ai-rescue" class="home-fold">
-                <summary class="home-fold-summary">AI 整理成标准格式</summary>
-                <div class="rescue-routes">
-                    <!-- 复制提示词给聊天 AI(没配 Key 时 = 主) -->
-                    <div class="rescue-route is-primary" data-route="manual">
-                        <p class="rescue-route-name">复制提示词给聊天 AI</p>
-                        <button id="copy-prompt-btn" class="action-btn secondary rescue-main">📋 复制提示词和题目</button>
-                        <p class="rescue-route-hint">发给豆包 / Kimi / DeepSeek，把回复粘回输入框</p>
-                        <button type="button" id="prompt-toggle-btn" class="prompt-toggle">查看提示词内容 ▾</button>
-                        <pre id="prompt-content" class="prompt-content hidden"></pre>
-                    </div>
-                    <!-- 一键整理(配了 AI Key 时 = 主) -->
-                    <div class="rescue-route" data-route="auto">
-                        <p class="rescue-route-name">一键整理</p>
-                        <button type="button" id="rescue-ai-btn" class="action-btn secondary rescue-main">🤖 AI 格式整理并填入输入框</button>
-                        <p class="rescue-route-hint" data-when="ready">结果自动填进输入框，不会替你编答案</p>
-                        <p class="rescue-route-hint" data-when="needkey">先在标题栏中间的 ⚙ AI 设置 里配 Key</p>
-                    </div>
-                </div>
-            </details>
-
-            <!-- ③ 参考材料:已挪进「导入题库」右边的「?」悬浮面板(.home-help),不再是折叠块 -->
+            <!-- 参考材料:已挪进「导入题库」右边的「?」悬浮面板(.home-help),不再是折叠块。
+                 「AI 整理成标准格式」救援区(👤 2026-09-13)整块**删除**(👤 2026-09-14):
+                 两个按钮各自归位(AI 整理输入框 → 下排;复制提示词和题目 → 按需提示区),
+                 剩下的说明文字随按钮走,不再有一块常驻的"AI 说明书"。 -->
 
             <!-- 装到主屏的引导(👤 P0-1.4):iOS 没有 beforeinstallprompt,只能"教一句";
                  **不做弹窗**。👤 2026-09-13:从**题库页底部**挪到**首页底部** ——
@@ -711,6 +700,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1091"></script>
+    <script type="module" src="src/main.js?v=1092"></script>
 </body>
 </html>

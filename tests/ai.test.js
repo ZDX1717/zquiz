@@ -89,7 +89,7 @@ test('splitIntoChunks:超长单段按行硬切;空材料为空', () => {
     assert.deepStrictEqual(splitIntoChunks(''), []);
 });
 
-// ---------- 编排(整篇原文 → 整理文本,救援区 B 路线用) ----------
+// ---------- 编排(整篇原文 → 整理文本,「🤖 AI 整理输入框」用) ----------
 test('aiFormatMaterial:官方提示词作 system,逐块带进度,结果按块拼回', async () => {
     const f = fakeFetch((url, init) => {
         const body = JSON.parse(init.body);
@@ -314,7 +314,7 @@ test('选一个 GBK 编码的 txt:文字正确进输入框,并说明按什么编
     assert.ok(String(elements['import-status'].className).includes('success'));
 });
 
-test('救援区 B 路线:AI 接口整理 → 结果入输入框 → 解析后逐题带 AI 生成标记;手动编辑即失效', async () => {
+test('「🤖 AI 整理输入框」:AI 接口整理 → 结果入输入框 → 解析后逐题带 AI 生成标记;手动编辑即失效', async () => {
     const { run, store, elements } = await import('./helpers/vm-harness.mjs').then(h => h.loadApp({
         sandboxExtras: {
             fetch: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: AI_TEXT } }] }) }),

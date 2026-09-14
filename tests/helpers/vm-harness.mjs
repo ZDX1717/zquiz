@@ -65,8 +65,8 @@ export function makeEl() {
         // 比在桩里造真实 DOM 树便宜得多,也避免"因为读不到就放宽产品逻辑"这种坏修法。
         // ⚠️ 按选择器缓存:同一个选择器要拿到**同一个**桩。
         //    以前每次调用都新建一个,于是产品代码里的
-        //    `const route = document.querySelector('#ai-rescue .rescue-route[data-route="manual"]')`
-        //    在测试里**改完就丢** —— 后续 classList.toggle('is-primary') 断言不到任何东西。
+        //    `const panel = document.querySelector('#ai-rescue .rescue-route[data-route="manual"]')`
+        //    在测试里**改完就丢** —— 后续 classList.toggle(...) 断言不到任何东西。
         //    真实 DOM 里同一选择器本就返回同一个节点,缓存反而更保真。
         querySelector: (sel) => (qCache[String(sel)] ||= makeEl()),
         querySelectorAll: () => [],
