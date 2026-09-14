@@ -1199,7 +1199,11 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     font-family: inherit;
     word-break: break-word;
     overflow-wrap: anywhere;
-    white-space: pre;
+    /* 🚨 必须是 pre-wrap,**不能是 pre**(👤 2026-09-13 报"提示字显示不全"):
+       `pre` = 保留换行但**关掉自动换行** —— 长行会横向溢出、右边被裁(实测框宽 340,
+       一行内容 760,每行只看得到前半截)。`pre-wrap` 两件事都做:粘贴进来的原始换行照旧保留,
+       超宽的行自动折行。UA 给 textarea 的默认值本来就是 pre-wrap,这条只是别把它改坏。 */
+    white-space: pre-wrap;
 }
 
 #paste-input:focus {

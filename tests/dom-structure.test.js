@@ -266,6 +266,23 @@ test('首页「?」= 支持的题目格式悬浮面板(👤 2026-09-13:去掉底
         '首页卡头要 relative —— 手机档(此时 .home-help 是 static)的悬浮面板靠它定位');
 });
 
+test('导入输入框:必须自动换行(👤 2026-09-13 报"提示字显示不全")', () => {
+    const rule = cssNoComments.match(/\n#paste-input \{([^}]*)\}/);
+    assert.ok(rule, '应有 #paste-input 的规则');
+    // ✅ pre-wrap = 保留粘贴进来的原始换行 + 超宽行自动折行(正是 👤 要的"自动换行")
+    assert.ok(/white-space\s*:\s*pre-wrap/.test(rule[1]), '必须是 pre-wrap');
+    assert.ok(/overflow-wrap\s*:\s*anywhere/.test(rule[1]) && /word-break\s*:\s*break-word/.test(rule[1]),
+        '超长英文/连续串也要能断行');
+    // 🚨 `white-space: pre` 会**关掉自动换行** —— 长行横向溢出、右边被裁。
+    //    实测(2026-09-13):框宽 340px,一行内容 760px,每行只看得到前半截,提示字与粘贴的长行都被切。
+    //    ⚠️ 只能按"选择器涉及 textarea / 输入框"来判 —— CSS 里的 <pre> 示例块合法地使用 pre。
+    const blocks = [...cssNoComments.matchAll(/([^{}]+)\{([^}]*)\}/g)];
+    const offenders = blocks
+        .filter(m => /textarea|paste-input/.test(m[1]) && /white-space\s*:\s*pre\s*;/.test(m[2]))
+        .map(m => m[1].trim().split('\n').pop().trim());
+    assert.deepStrictEqual(offenders, [], `输入框上不许写 white-space: pre(会关掉自动换行):${offenders.join(' / ')}`);
+});
+
 test('三页内容同宽:首页与题库页的模块走阅读档', () => {
     const cssText = String(cssNoComments);
     for (const sel of ['#home-section > .operation-card', '#banks-section > .banks-list']) {
