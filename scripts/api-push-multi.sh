@@ -20,6 +20,17 @@ ANCHOR="${1:-$(gh api "repos/$REPO/git/refs/heads/main" --jq '.object.sha')}"
 LOCAL=$(git rev-parse HEAD)
 
 if [ "$ANCHOR" = "$LOCAL" ]; then echo "已是最新,无需推送"; exit 0; fi
+# ⚠️ 实测 2026-09-13:上一次 push 后**忘了跑 align-remote-sha.mjs**,本地就没有远端那个提交对象
+#    (远端 SHA 被 GitHub 剥了尾换行而不同),于是这里直接 "Not a valid commit name" ——
+#    报错完全指不到"本地漂移"这个真因。先做一次显式判定,把修法写在报错里。
+if ! git cat-file -e "$ANCHOR^{commit}" 2>/dev/null; then
+    echo "FAIL: 远端锚点 $ANCHOR 不是本地对象 —— 本地与远端漂移了(上次 push 后没对齐 SHA)。"
+    echo "      修法(按远端规则重写本地待推提交,只去消息尾换行):"
+    echo "        ① 找出分叉点:git log --oneline -5 与 gh api repos/$REPO/commits --jq '.[].sha' 对照;"
+    echo "        ② 用 align-remote-sha.mjs <分叉点的父 sha> $ANCHOR 把本地对齐到远端;"
+    echo "        ③ 再跑本脚本。"
+    exit 1
+fi
 git merge-base --is-ancestor "$ANCHOR" "$LOCAL" || { echo "FAIL: 远端不是本地祖先,非 fast-forward,需人工核对"; exit 1; }
 COUNT=$(git rev-list --count "$ANCHOR..$LOCAL")
 [ "$COUNT" -gt 0 ] || { echo "FAIL: 无可推提交"; exit 1; }
