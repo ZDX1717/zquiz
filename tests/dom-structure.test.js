@@ -123,7 +123,10 @@ test('首页顶部:版本信息 + 简介模块(👤 2026-09-14 要求加在导�
     const cardIdx = home.indexOf('operation-card home-import');
     assert.ok(aboutIdx > -1 && aboutIdx < cardIdx, '简介模块应在**导入卡上方**');
     assert.ok(/id="app-version"/.test(home), '版本号要有自己的落点(#app-version)');
-    assert.ok(/class="home-about-desc"/.test(home), '要有那句简介');
+    assert.ok(/class="home-about-note"/.test(home), '第二行应是"本次更新"那块');
+    assert.ok(/class="home-about-tag">本次更新</.test(home), '要有「本次更新」这个路标');
+    assert.ok(/id="release-note"/.test(home), '更新内容要有落点(#release-note)');
+    assert.ok(!/id="release-note"[^>]*>[^<]/.test(home), 'HTML 里不许写死更新内容(会与版本号漂移)');
     // 版本号只从 src/version.js 来:HTML 里不许写死第二个数字
     assert.ok(!/id="app-version"[^>]*>\s*v?\d/.test(home), 'HTML 里不许写死版本号(会与 package.json 漂移)');
     const main = readFileSync(path.join(root, 'src', 'main.js'), 'utf8');
@@ -131,12 +134,21 @@ test('首页顶部:版本信息 + 简介模块(👤 2026-09-14 要求加在导�
     // 🚨 守卫:src/version.js 必须与 package.json 完全一致(版本号是"已发布的事实",两处不许漂移)
     const ver = readFileSync(path.join(root, 'src', 'version.js'), 'utf8');
     const inCode = (ver.match(/APP_VERSION = '([^']+)'/) || [])[1];
+    // 「本次更新」那句与版本号**同源同改**:非空、≤40 字、不许括号补充、不许写成一大段
+    const note = (ver.match(/RELEASE_NOTE = '([^']+)'/) || [])[1];
+    assert.ok(note, 'src/version.js 里应有 RELEASE_NOTE(首页信息模块那句「本次更新」)');
+    assert.ok(note.length <= 32, `「本次更新」要短(≤32 字),实际 ${note.length} 字 —— 手机一行放得下约 24 字,再多就多占一行`);
+    assert.ok(!/[（()）]/.test(note), '站内文案不许用括号塞补充说明');
+    assert.ok(/ · /.test(note), '多条更新用 ` · ` 分隔(与站内其它计数文案一致)');
+    assert.ok(/releaseNoteEl\.textContent = RELEASE_NOTE/.test(main), 'main.js 应从 RELEASE_NOTE 注入更新内容');
     const inPkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8')).version;
     assert.ok(inCode, 'src/version.js 里应有 APP_VERSION');
     assert.strictEqual(inCode, inPkg,
         `src/version.js(${inCode})与 package.json(${inPkg})必须一致 —— 发布时两处一起改`);
-    // 简介模块两行封顶:手机一屏要同时装下它和导入卡,多一行都是从导入卡里抢高度
-    assert.ok(/\.home-about-desc\s*\{/.test(cssNoComments), '简介那句要有自己的样式(字号小一档)');
+    // 两行封顶:手机一屏要同时装下它和导入卡,多一行都是从导入卡里抢高度
+    assert.ok(/\.home-about-note\s*\{/.test(cssNoComments), '「本次更新」要有自己的样式(字号小一档)');
+    assert.ok(/\.home-about-tag\s*\{[^}]*white-space\s*:\s*nowrap/.test(cssNoComments),
+        '「本次更新」这个路标不换行(否则它会自己占掉半行)');
     // 底色与导入卡**同款**(👤 2026-09-14:"加灰色底,和其他模块保持统一")—— 都用同一个令牌,别各写各的灰
     const aboutRule = cssNoComments.match(/\n\.home-about \{([^}]*)\}/)[1];
     assert.ok(/background-color\s*:\s*var\(--c-surface-alt\)/.test(aboutRule), '简介模块要用 --c-surface-alt 灰底');

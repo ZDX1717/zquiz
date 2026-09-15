@@ -2,7 +2,7 @@ import { buildAiNotes } from './ai.js';
 import { state } from './state.js';
 import { pushUndo, canUndo, canRedo, undoLabel, redoLabel, clearUndo, assignExact, cloneQuestion } from './undo.js';
 import { applyTheme, initTheme, cycleThemeSetting, setThemeSetting } from './theme.js';
-import { APP_VERSION } from './version.js';
+import { APP_VERSION, RELEASE_NOTE } from './version.js';
 import { buildCardCells, finalizeQuestion, formatQuestionsForExport, normalizeAnswerString, parseQuestionsText, questionDedupKey, shuffleArray, splitInlineOptions, splitBankSections, bankSectionHeader } from './parser.js';
 import { deleteBankVersion, loadAutoNextSetting, loadBankVersions, loadCollapsedBanks, loadFromLocalStorage, loadMasterySetting, pushBankVersion, saveAutoNextSetting, saveCollapsedBanks, saveMasterySetting, saveToLocalStorage, recordImportBatch } from './storage.js';
 import { downloadFile, hideModal, showModal } from './dom.js';
@@ -96,6 +96,7 @@ const pasteParseBtn = document.getElementById('paste-parse-btn');
 const pasteClearBtn = document.getElementById('paste-clear-btn');
 const pasteGrip = document.getElementById('paste-grip');
 const appVersionEl = document.getElementById('app-version');
+const releaseNoteEl = document.getElementById('release-note');
 const importPreviewModal = document.getElementById('import-preview-modal');
 const previewSummary = document.getElementById('preview-summary');
 const previewSelectAll = document.getElementById('preview-select-all');
@@ -520,6 +521,7 @@ function setupEventListeners() {
     setupPasteGrip();
     // 版本号只从 src/version.js 来(守卫会核它和 package.json 一致);HTML 里不写死第二个数字
     if (appVersionEl) appVersionEl.textContent = 'v' + APP_VERSION;
+    if (releaseNoteEl) releaseNoteEl.textContent = RELEASE_NOTE;
 
     // 导入预览向导
     previewSelectAll.addEventListener('change', togglePreviewSelectAll);
@@ -667,6 +669,7 @@ if (typeof window === 'undefined') {
         cycleThemeSetting,
         setupPasteGrip,
         APP_VERSION,
+        RELEASE_NOTE,
         navigate,
         buildCardCells,
         openAnswerCard,

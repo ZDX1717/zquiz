@@ -1057,11 +1057,22 @@ html[data-theme="dark"] .bank-item[data-color] .bank-card-foot .foot-toggle:not(
     font-weight: 400;
     color: var(--c-text-faint);   /* 版本是次要信息,别跟站名抢重 */
 }
-.home-about-desc {
+/* 第二行 = 本次更新内容。排版要点(👤 要求"注意排版、字数"):
+   - 标签「本次更新」用淡色、不换行(它是路标,不是内容);
+   - 正文 13px / 行高 1.5,靠 ` · ` 分隔 —— 与站内其它计数文案同一套写法;
+   - 手机档它可能折成两行,这正是**两行封顶**的边界:再加一条更新就会把导入卡顶出屏幕
+     (守卫按 40 字上限卡住,见 src/version.js)。 */
+.home-about-note {
     margin: 4px 0 0;
     font-size: 13px;
     line-height: 1.5;
     color: var(--c-text-secondary);
+}
+.home-about-tag {
+    margin-right: 6px;
+    color: var(--c-text-faint);
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 /* ==================== 首页(👤 2026-09-13 重构:简洁易读、主次得当、手机优先)====================

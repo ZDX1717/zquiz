@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Zquiz">
     <meta name="mobile-web-app-capable" content="yes">
-    <link rel="stylesheet" href="styles.css?v=1102">
+    <link rel="stylesheet" href="styles.css?v=1103">
 </head>
 <body>
     <div class="container">
@@ -87,7 +87,12 @@
                     Zquiz · 期末周刷题
                     <span class="home-about-ver" id="app-version"></span>
                 </p>
-                <p class="home-about-desc">把题目粘进来就能刷:粘贴或选文件 → 预览确认 → 入库刷题。数据只存本机。</p>
+                <!-- 第二行 = **当前版本的更新内容**(👤 2026-09-14:模块改成展示更新内容)。
+                     ⚠️ 正文由 main.js 从 src/version.js 的 RELEASE_NOTE 注入 —— 与版本号同源、发布时一起改,
+                        HTML 里不写死(写死就等着和版本号漂移)。 -->
+                <p class="home-about-note">
+                    <span class="home-about-tag">本次更新</span><span id="release-note"></span>
+                </p>
             </div>
 
             <div class="operation-card home-import">
@@ -742,6 +747,6 @@ A：选项A  B：选项B
         </p>
     </div>
 
-    <script type="module" src="src/main.js?v=1102"></script>
+    <script type="module" src="src/main.js?v=1103"></script>
 </body>
 </html>
